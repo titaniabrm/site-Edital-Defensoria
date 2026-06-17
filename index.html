@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edital | Defensoria-Geral do Exercito</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+        <img src="assets/defensoria-logo.webp" alt="Emblema da Defensoria-Geral do Exercito" width="64" height="64">
+      <div>
+        <p class="eyebrow">Processo seletivo</p>
+        <h1>Defensoria-Geral do Exercito</h1>
+      </div>
+    </div>
+    <nav class="top-actions" aria-label="Atalhos">
+      <button class="ghost-button" type="button" data-scroll-target="formulario">Formulario</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero candidate-only">
+      <div class="hero-copy">
+        <p class="eyebrow">Avaliacao de ingresso</p>
+        <h2>Formulario oficial para candidatos da Defensoria</h2>
+        <p>
+          Responda com atencao. As questoes objetivas possuem apenas uma alternativa correta e as questoes subjetivas
+          serao avaliadas por clareza, conhecimento processual e indicios de resposta artificial.
+        </p>
+      </div>
+      <aside class="status-panel" aria-label="Resumo do preenchimento">
+        <img src="assets/defensoria-logo.webp" alt="" width="112" height="112">
+        <div>
+          <span class="metric" id="progressMetric">0%</span>
+          <span class="metric-label">preenchido</span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <span id="progressBar"></span>
+        </div>
+        <p id="draftStatus">Rascunho nao salvo nesta sessao.</p>
+      </aside>
+    </section>
+
+    <section class="rules-section candidate-only" aria-labelledby="regrasTitulo">
+      <div class="section-heading">
+        <p class="eyebrow">Regras</p>
+        <h2 id="regrasTitulo">Regras do formulario</h2>
+      </div>
+      <div class="rules-grid">
+        <article>
+          <h3>Leitura e atencao</h3>
+          <p>Leia cada questao cuidadosamente antes de responder. Interprete o enunciado antes de selecionar ou escrever.</p>
+        </article>
+        <article>
+          <h3>Questoes objetivas</h3>
+          <p>Cada questao objetiva possui apenas uma alternativa correta.</p>
+        </article>
+        <article>
+          <h3>Questoes subjetivas</h3>
+          <p>Responda de forma clara, objetiva e usando seus conhecimentos sobre procedimentos e analise processual.</p>
+        </article>
+        <article>
+          <h3>Conduta</h3>
+          <p>Nao utilize consultas externas, auxilio de terceiros ou meios que comprometam a avaliacao individual.</p>
+        </article>
+        <article>
+          <h3>Criterios avaliados</h3>
+          <p>Conhecimentos processuais, interpretacao, raciocinio logico, analise de situacoes e postura profissional.</p>
+        </article>
+        <article>
+          <h3>Revisao</h3>
+          <p>Antes de finalizar, revise suas respostas para garantir que todas as questoes foram respondidas.</p>
+        </article>
+      </div>
+    </section>
+
+    <form id="examForm" class="form-shell candidate-only" autocomplete="off">
+      <section id="formulario" class="form-section" aria-labelledby="dadosTitulo">
+        <div class="section-heading">
+          <p class="eyebrow">Identificacao</p>
+          <h2 id="dadosTitulo">Dados do candidato</h2>
+        </div>
+        <div class="field-grid">
+          <label>
+            <span>Qual seu nome de usuario no Discord?</span>
+            <input name="discord" type="text" required placeholder="Ex.: usuario#0000 ou @usuario">
+          </label>
+          <label>
+            <span>Qual seu nome de usuario no Roblox?</span>
+            <input name="roblox" type="text" required placeholder="Ex.: UsuarioRoblox">
+          </label>
+          <label>
+            <span>Ha quanto tempo voce esta no EB?</span>
+            <input name="tempoEb" type="text" required placeholder="Ex.: 6 meses">
+          </label>
+        </div>
+      </section>
+
+      <section class="form-section" aria-labelledby="objetivasTitulo">
+        <div class="section-heading">
+          <p class="eyebrow">Parte I</p>
+          <h2 id="objetivasTitulo">Questoes objetivas</h2>
+        </div>
+        <div id="objectiveQuestions" class="questions-list"></div>
+      </section>
+
+      <section class="form-section" aria-labelledby="subjetivasTitulo">
+        <div class="section-heading">
+          <p class="eyebrow">Parte II</p>
+          <h2 id="subjetivasTitulo">Questoes subjetivas</h2>
+        </div>
+        <div id="subjectiveQuestions" class="questions-list"></div>
+      </section>
+
+      <section class="submit-band" aria-label="Finalizacao">
+        <div>
+          <h2>Finalizar envio</h2>
+          <p>Ao enviar, o sistema salva a inscricao no banco configurado e gera um parecer para a banca revisar.</p>
+        </div>
+        <div class="submit-actions">
+          <button class="secondary-button" type="button" id="saveDraftButton">Salvar rascunho</button>
+          <button class="primary-button" type="submit">Enviar respostas</button>
+        </div>
+      </section>
+    </form>
+
+    <section id="confirmation" class="confirmation hidden candidate-only" aria-live="polite">
+      <div>
+        <p class="eyebrow">Envio registrado</p>
+        <h2>Respostas salvas para avaliacao</h2>
+        <p id="confirmationText"></p>
+      </div>
+      <button class="secondary-button" type="button" id="newSubmissionButton">Novo candidato</button>
+    </section>
+
+    <section id="revisao" class="review-shell hidden" aria-labelledby="revisaoTitulo">
+      <div class="section-heading">
+        <p class="eyebrow">Acesso restrito</p>
+        <h2 id="revisaoTitulo">Painel administrativo</h2>
+        <p>
+          Digite a senha administrativa para visualizar respostas, acertos, desempenho e possivel uso de IA.
+        </p>
+      </div>
+
+      <div class="review-controls">
+        <label class="pin-field">
+          <span>Senha administrativa</span>
+          <input id="adminPin" type="password" placeholder="Digite a senha" autocomplete="current-password">
+        </label>
+        <button class="primary-button" type="button" id="unlockReviewButton">Entrar</button>
+        <button class="secondary-button" type="button" id="exportJsonButton" disabled>Exportar JSON</button>
+        <button class="secondary-button" type="button" id="exportCsvButton" disabled>Exportar CSV</button>
+        <button class="secondary-button" type="button" id="logoutAdminButton" disabled>Sair</button>
+        <label class="file-import">
+          <span>Importar JSON</span>
+          <input id="importJsonInput" type="file" accept="application/json">
+        </label>
+      </div>
+
+      <div id="reviewLocked" class="empty-state">
+        Painel bloqueado. A senha pode ser alterada no arquivo <strong>.env</strong>, na variavel <strong>ADMIN_PIN</strong>.
+      </div>
+
+      <div id="reviewDashboard" class="review-dashboard hidden">
+        <div class="summary-grid" id="summaryGrid"></div>
+        <div class="dashboard-layout">
+          <div class="submission-list">
+            <div class="panel-title">
+              <h3>Envios</h3>
+              <button class="danger-button" type="button" id="clearSubmissionsButton">Limpar envios</button>
+            </div>
+            <div class="filter-row">
+              <label>
+                <span>Filtro</span>
+                <select id="riskFilter">
+                  <option value="all">Todos</option>
+                  <option value="high">Maior risco de IA</option>
+                  <option value="review">Em analise</option>
+                  <option value="approved">Aprovados</option>
+                  <option value="rejected">Reprovados</option>
+                </select>
+              </label>
+            </div>
+            <div id="submissionList"></div>
+          </div>
+          <article class="submission-detail" id="submissionDetail">
+            <div class="empty-state">Selecione um candidato para ver a analise.</div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Defensoria-Geral do Exercito</span>
+    <span>Ferramenta local de edital e avaliacao</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
