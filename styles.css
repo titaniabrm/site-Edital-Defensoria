@@ -733,6 +733,57 @@ body.admin-page .review-shell {
   overflow-wrap: anywhere;
 }
 
+.answer-review .answer-text {
+  white-space: pre-wrap;
+}
+
+.question-index {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  background: rgba(7, 26, 43, 0.85);
+  padding: 8px;
+  border-radius: 10px;
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.question-index button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #f6f2e8;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.question-index button[data-answered="true"] {
+  background: #2c7a4b;
+  border-color: #2c7a4b;
+}
+
+.question-index button:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.api-base-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-right: 8px;
+}
+
+@media (max-width: 900px) {
+  .question-index { display: none; }
+}
+
 .flag-list {
   margin: 8px 0 0;
   padding-left: 18px;

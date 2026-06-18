@@ -37,7 +37,11 @@ alter table public.defensoria_submissions
   add column if not exists status_history jsonb not null default '[]'::jsonb,
   add column if not exists seed text,
   add column if not exists started_at timestamptz,
-  add column if not exists similarity_summary jsonb;
+  add column if not exists similarity_summary jsonb,
+  add column if not exists tags jsonb not null default '[]'::jsonb,
+  add column if not exists ip_hash text,
+  add column if not exists ua_hash text,
+  add column if not exists paste_count integer not null default 0;
 
 create table if not exists public.defensoria_magic_links (
   token_hash text primary key,

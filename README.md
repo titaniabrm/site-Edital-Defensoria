@@ -1,6 +1,9 @@
 # Edital Defensoria-Geral do Exercito
 
-Formulario de avaliacao com painel administrativo, analise heuristica de IA e relatorios.
+Formulario de avaliacao do candidato com analise heuristica de IA e relatorios.
+
+> O painel administrativo agora roda em um projeto separado: `../Edital painel`.
+> Esta API expoe rotas `/api/admin/*` consumidas pelo painel via CORS.
 
 ## Variaveis de ambiente (`.env`)
 
@@ -20,8 +23,14 @@ GROQ_MODEL=llama-3.3-70b-versatile
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 DISCORD_WEBHOOK_URL=
-PUBLIC_ADMIN_URL=https://seusite.vercel.app
+PUBLIC_ADMIN_URL=https://edital-painel.vercel.app
+ADMIN_PANEL_ORIGIN=https://edital-painel.vercel.app
+IP_HASH_SALT=troque-este-salt
 ```
+
+`ADMIN_PANEL_ORIGIN` autoriza CORS para o projeto separado do painel.
+Use `*` apenas em desenvolvimento. `PUBLIC_ADMIN_URL` faz a rota `/admin`
+redirecionar para o painel externo.
 
 As datas `EXAM_START_AT` / `EXAM_END_AT` estao em **UTC**. O padrao acima cobre
 `19/06/2026 12:00` ate `21/06/2026 20:00` no fuso `America/Sao_Paulo` (UTC-3).

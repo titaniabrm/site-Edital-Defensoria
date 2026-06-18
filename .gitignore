@@ -1,4 +1,13 @@
 node_modules/
 .env
+.env.local
+.env.*.local
+.vercel/
+
+# Dados sensiveis (envios de candidatos nao devem ir para o git)
 data/
+
+# Logs e temporarios
 *.log
+.DS_Store
+Thumbs.db

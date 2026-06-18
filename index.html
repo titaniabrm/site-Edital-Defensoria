@@ -137,6 +137,7 @@
         <div class="submit-actions">
           <button class="ghost-button" type="button" id="jumpPendingButton">Ir para proxima pendente</button>
           <button class="secondary-button" type="button" id="saveDraftButton">Salvar rascunho</button>
+          <button class="secondary-button" type="button" id="clearDraftButton">Limpar rascunho</button>
           <button class="primary-button" type="submit">Enviar respostas</button>
         </div>
       </section>
@@ -164,75 +165,7 @@
       <button class="secondary-button" type="button" id="newSubmissionButton">Novo candidato</button>
     </section>
 
-    <section id="revisao" class="review-shell hidden" aria-labelledby="revisaoTitulo">
-      <div class="section-heading">
-        <p class="eyebrow">Acesso restrito</p>
-        <h2 id="revisaoTitulo">Painel administrativo</h2>
-        <p>
-          Digite a senha administrativa para visualizar respostas, acertos, desempenho e possivel uso de IA.
-        </p>
-      </div>
-
-      <div class="review-controls">
-        <label class="pin-field">
-          <span>Senha administrativa</span>
-          <input id="adminPin" type="password" placeholder="Digite a senha" autocomplete="current-password">
-        </label>
-        <button class="primary-button" type="button" id="unlockReviewButton">Entrar</button>
-        <button class="secondary-button" type="button" id="exportJsonButton" disabled>Exportar JSON</button>
-        <button class="secondary-button" type="button" id="exportCsvButton" disabled>Exportar CSV</button>
-        <button class="secondary-button" type="button" id="magicLinkButton">Gerar magic link</button>
-        <button class="secondary-button" type="button" id="logoutAdminButton" disabled>Sair</button>
-        <label class="file-import">
-          <span>Importar JSON</span>
-          <input id="importJsonInput" type="file" accept="application/json">
-        </label>
-      </div>
-
-      <div id="reviewLocked" class="empty-state">
-        Painel bloqueado. A senha pode ser alterada no arquivo <strong>.env</strong>, na variavel <strong>ADMIN_PIN</strong>.
-      </div>
-
-      <div id="reviewDashboard" class="review-dashboard hidden">
-        <div class="summary-grid" id="summaryGrid"></div>
-        <div class="dashboard-layout">
-          <div class="submission-list">
-            <div class="panel-title">
-              <h3>Envios</h3>
-              <button class="danger-button" type="button" id="clearSubmissionsButton">Limpar envios</button>
-            </div>
-            <div class="filter-row">
-              <label>
-                <span>Buscar</span>
-                <input id="searchInput" type="search" placeholder="Discord ou Roblox">
-              </label>
-              <label>
-                <span>Filtro</span>
-                <select id="riskFilter">
-                  <option value="all">Todos</option>
-                  <option value="high">Maior risco de IA</option>
-                  <option value="review">Em analise</option>
-                  <option value="approved">Aprovados</option>
-                  <option value="rejected">Reprovados</option>
-                </select>
-              </label>
-              <label>
-                <span>Ordenar</span>
-                <select id="sortBy">
-                  <option value="date">Mais recentes</option>
-                  <option value="score">Maior % objetivas</option>
-                  <option value="risk">Maior risco IA</option>
-                </select>
-              </label>
-            </div>
-            <div id="submissionList"></div>
-          </div>
-          <article class="submission-detail" id="submissionDetail">
-            <div class="empty-state">Selecione um candidato para ver a analise.</div>
-          </article>
-        </div>
-      </div>
-    </section>
+    <nav class="question-index" id="questionIndex" aria-label="Indice de questoes"></nav>
   </main>
 
   <footer>

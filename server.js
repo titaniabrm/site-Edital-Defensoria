@@ -21,9 +21,20 @@ const EXAM_END_AT = process.env.EXAM_END_AT || "2026-06-21T23:00:00Z";   // 21/0
 const MIN_FORM_DURATION_MS = Number(process.env.MIN_FORM_DURATION_MS || 30_000);
 const HONEYPOT_FIELD = "middlename";
 const PUBLIC_ADMIN_URL = process.env.PUBLIC_ADMIN_URL || "";
+const ADMIN_PANEL_ORIGIN = process.env.ADMIN_PANEL_ORIGIN || "";
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || "";
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "submissions.json");
+const IP_HASH_SALT = process.env.IP_HASH_SALT || ADMIN_SESSION_SECRET;
+
+if (ADMIN_PIN === "DGE-2026") {
+  // eslint-disable-next-line no-console
+  console.warn("[ATENCAO] ADMIN_PIN nao definido no .env - usando default fraco. Troque antes do deploy.");
+}
+if (ADMIN_PIN.length < 8) {
+  // eslint-disable-next-line no-console
+  console.warn("[ATENCAO] ADMIN_PIN com menos de 8 caracteres. Use uma senha forte.");
+}
 
 const logger = pino({
   level: process.env.LOG_LEVEL || "info",
@@ -229,6 +240,34 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+
+// Cabecalhos basicos de seguranca (substitui helmet sem dependencia extra).
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
+// CORS para o painel admin separado.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (ADMIN_PANEL_ORIGIN === "*" || origin === ADMIN_PANEL_ORIGIN)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-admin-pin");
+    res.setHeader("Vary", "Origin");
+  }
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
+
 app.use(express.static(__dirname, {
   extensions: ["html"],
   maxAge: process.env.VERCEL === "1" ? "1h" : 0
@@ -251,7 +290,8 @@ app.get("/sw.js", (req, res) => {
 });
 
 app.get("/assets/:file", (req, res) => {
-  res.sendFile(path.join(__dirname, "assets", req.params.file));
+  const safe = path.basename(String(req.params.file || ""));
+  res.sendFile(path.join(__dirname, "assets", safe));
 });
 
 app.get(["/admin", "/admin/"], (req, res) => {
@@ -259,10 +299,19 @@ app.get(["/admin", "/admin/"], (req, res) => {
   if (token && consumeMagicLink(token)) {
     setAdminCookie(res);
     logger.info({ event: "magic.consumed" }, "magic link usado");
-    res.redirect("/admin");
+    if (PUBLIC_ADMIN_URL) {
+      res.redirect(`${PUBLIC_ADMIN_URL.replace(/\/$/, "")}/?token=consumed`);
+      return;
+    }
+  }
+  if (PUBLIC_ADMIN_URL) {
+    res.redirect(PUBLIC_ADMIN_URL);
     return;
   }
-  res.sendFile(path.join(__dirname, "index.html"));
+  res.status(410).type("text/plain").send(
+    "O painel administrativo agora roda em um projeto separado.\n" +
+    "Defina PUBLIC_ADMIN_URL para redirecionar automaticamente."
+  );
 });
 
 function parseCookies(req) {
@@ -293,10 +342,16 @@ function createAdminSession() {
 function isValidAdminSession(token) {
   if (!token || !String(token).includes(".")) return false;
   const [expiration, signature] = String(token).split(".");
-  if (Number(expiration) < Date.now()) return false;
+  if (!expiration || !signature || Number(expiration) < Date.now()) return false;
   const expected = signSession(expiration);
-  if (Buffer.byteLength(signature) !== Buffer.byteLength(expected)) return false;
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  const sigBuf = Buffer.from(signature, "hex");
+  const expBuf = Buffer.from(expected, "hex");
+  if (sigBuf.length === 0 || sigBuf.length !== expBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
 }
 
 function setAdminCookie(res) {
@@ -578,15 +633,25 @@ function validateSubmission(body) {
   if (objectiveAnswers.length !== objectiveQuestions.length) {
     throw new Error("Respostas objetivas incompletas.");
   }
-  if (subjectiveAnswers.length !== 15 || subjectiveAnswers.some((item) => countWords(item.answer) < 5)) {
+  if (subjectiveAnswers.length !== subjectiveQuestions.length || subjectiveAnswers.some((item) => countWords(item.answer) < 5)) {
     throw new Error("Respostas subjetivas incompletas.");
+  }
+
+  const seed = String(body?.seed || "").slice(0, 80);
+  const seedSignature = String(body?.seedSignature || "");
+  if (!verifySeedSignature(seed, seedSignature)) {
+    throw new Error("Sessao invalida ou expirada. Recarregue a pagina.");
   }
 
   const normalizedObjective = objectiveAnswers.map((item) => {
     const selected = Number.isInteger(Number(item.selectedOriginalIndex))
       ? Number(item.selectedOriginalIndex)
       : Number(item.selected);
-    return { id: Number(item.id), selected };
+    return {
+      id: Number(item.id),
+      selected,
+      timeSpentMs: Math.max(0, Number(item.timeSpentMs) || 0)
+    };
   });
 
   return {
@@ -599,11 +664,17 @@ function validateSubmission(body) {
     subjectiveAnswers: subjectiveAnswers.map((item) => ({
       id: Number(item.id),
       question: String(item.question || ""),
-      answer: String(item.answer || "").trim()
+      answer: String(item.answer || "").trim(),
+      pasteDetected: Boolean(item.pasteDetected),
+      timeSpentMs: Math.max(0, Number(item.timeSpentMs) || 0)
     })),
-    seed: String(body?.seed || "").slice(0, 80),
+    seed,
     startedAt: startedAtRaw.toISOString()
   };
+}
+
+function hashIdentifier(value) {
+  return crypto.createHash("sha256").update(`${IP_HASH_SALT}|${value}`).digest("hex").slice(0, 24);
 }
 
 async function readLocalSubmissions() {
@@ -640,7 +711,11 @@ function toDbRow(submission) {
     ai_high_risk_count: submission.aiHighRiskCount,
     ai_provider: submission.aiProvider,
     ai_model: submission.aiModel,
-    ai_raw: submission.aiRaw
+    ai_raw: submission.aiRaw,
+    tags: submission.tags || [],
+    ip_hash: submission.ipHash || null,
+    ua_hash: submission.uaHash || null,
+    paste_count: submission.pasteCount || 0
   };
 }
 
@@ -664,7 +739,11 @@ function fromDbRow(row) {
     aiFlaggedCount: row.ai_flagged_count,
     aiHighRiskCount: row.ai_high_risk_count,
     aiProvider: row.ai_provider,
-    aiModel: row.ai_model
+    aiModel: row.ai_model,
+    tags: row.tags || [],
+    ipHash: row.ip_hash || null,
+    uaHash: row.ua_hash || null,
+    pasteCount: row.paste_count || 0
   };
 }
 
@@ -737,11 +816,14 @@ async function updateSubmissionStatus(id, status, note, by) {
   return entry;
 }
 
-async function updateAdminNote(id, adminNote) {
+async function updateAdminNote(id, adminNote, tags) {
+  const safeTags = Array.isArray(tags) ? tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 12) : undefined;
   if (supabase) {
+    const update = { admin_note: adminNote };
+    if (safeTags) update.tags = safeTags;
     const { error } = await supabase
       .from("defensoria_submissions")
-      .update({ admin_note: adminNote })
+      .update(update)
       .eq("id", id);
     if (error) throw normalizeDatabaseError(error);
     return;
@@ -751,6 +833,7 @@ async function updateAdminNote(id, adminNote) {
   const index = submissions.findIndex((submission) => submission.id === id);
   if (index === -1) throw new Error("Candidato nao encontrado.");
   submissions[index].adminNote = adminNote;
+  if (safeTags) submissions[index].tags = safeTags;
   await writeLocalSubmissions(submissions);
 }
 
@@ -824,9 +907,16 @@ function writeSubmissionPdf(doc, submission) {
   });
 }
 
+function extractBearer(req) {
+  const auth = String(req.header("authorization") || "");
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
 function requireAdmin(req, res, next) {
   const cookies = parseCookies(req);
-  const hasSession = isValidAdminSession(cookies.admin_session);
+  const bearer = extractBearer(req);
+  const hasSession = isValidAdminSession(cookies.admin_session) || isValidAdminSession(bearer);
   const hasPassword = req.header("x-admin-pin") === ADMIN_PIN;
 
   if (!hasSession && !hasPassword) {
@@ -841,11 +931,34 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function signSeed(seed, issuedAt) {
+  return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(`${seed}|${issuedAt}`).digest("hex");
+}
+
+function verifySeedSignature(seed, signature) {
+  if (!seed || !signature || typeof signature !== "string") return false;
+  const [issuedAt, sig] = signature.split(".");
+  if (!issuedAt || !sig) return false;
+  // Seed expira em 6h para evitar reuso de longo prazo
+  if (Date.now() - Number(issuedAt) > 1000 * 60 * 60 * 6) return false;
+  const expected = signSeed(seed, issuedAt);
+  const sigBuf = Buffer.from(sig, "hex");
+  const expBuf = Buffer.from(expected, "hex");
+  if (sigBuf.length !== expBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
+
 app.get("/api/exam", (req, res) => {
   const seed = crypto.randomBytes(12).toString("hex");
   const exam = buildExamForSession(seed);
+  const issuedAt = Date.now();
   res.json({
     seed,
+    seedSignature: `${issuedAt}.${signSeed(seed, issuedAt)}`,
     serverNow: new Date().toISOString(),
     examStartAt: EXAM_START_AT,
     examEndAt: EXAM_END_AT,
@@ -918,13 +1031,40 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-app.post("/api/admin/login", (req, res) => {
-  if (String(req.body?.password || "") !== ADMIN_PIN) {
+const loginRate = new Map();
+const LOGIN_RATE_WINDOW_MS = 60 * 1000;
+const LOGIN_RATE_MAX = 5;
+
+function rateLimitLogin(req, res, next) {
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown")
+    .toString().split(",")[0].trim();
+  const now = Date.now();
+  const entry = loginRate.get(ip) || { count: 0, reset: now + LOGIN_RATE_WINDOW_MS };
+  if (now > entry.reset) {
+    entry.count = 0;
+    entry.reset = now + LOGIN_RATE_WINDOW_MS;
+  }
+  entry.count += 1;
+  loginRate.set(ip, entry);
+  if (entry.count > LOGIN_RATE_MAX) {
+    res.status(429).json({ error: "Muitas tentativas de login. Aguarde um minuto." });
+    return;
+  }
+  next();
+}
+
+app.post("/api/admin/login", rateLimitLogin, (req, res) => {
+  const provided = String(req.body?.password || "");
+  const a = Buffer.from(provided);
+  const b = Buffer.from(ADMIN_PIN);
+  const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (!ok) {
     res.status(401).json({ error: "Senha administrativa invalida." });
     return;
   }
   setAdminCookie(res);
-  res.json({ ok: true });
+  const token = createAdminSession();
+  res.json({ ok: true, token });
 });
 
 app.post("/api/admin/logout", (req, res) => {
@@ -983,12 +1123,26 @@ app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
     const priorSubmissions = await listSubmissions();
     const similaritySummary = buildSimilaritySummary(valid.subjectiveAnswers, priorSubmissions);
 
+    const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown")
+      .toString().split(",")[0].trim();
+    const ua = String(req.headers["user-agent"] || "unknown");
+    // Reaplica paste/timing vindos do client nas respostas analisadas pela IA
+    const subjectiveWithSignals = aiReview.answers.map((analyzed) => {
+      const original = valid.subjectiveAnswers.find((item) => item.id === analyzed.id);
+      return {
+        ...analyzed,
+        pasteDetected: original?.pasteDetected || false,
+        timeSpentMs: original?.timeSpentMs || 0
+      };
+    });
+    const pasteCount = subjectiveWithSignals.filter((item) => item.pasteDetected).length;
+
     const submission = {
       id: crypto.randomUUID(),
       submittedAt: new Date().toISOString(),
       identity: valid.identity,
       objectiveAnswers,
-      subjectiveAnswers: aiReview.answers,
+      subjectiveAnswers: subjectiveWithSignals,
       objectiveScore,
       objectiveTotal,
       performancePercent,
@@ -1003,7 +1157,11 @@ app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
       aiHighRiskCount: aiReview.highRiskCount,
       aiProvider: aiReview.provider,
       aiModel: aiReview.provider === "groq" ? GROQ_MODEL : null,
-      aiRaw: aiReview.raw
+      aiRaw: aiReview.raw,
+      tags: [],
+      ipHash: hashIdentifier(ip),
+      uaHash: hashIdentifier(ua),
+      pasteCount
     };
 
     await saveSubmission(submission);
@@ -1031,7 +1189,20 @@ app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
       aiProvider: submission.aiProvider
     });
   } catch (error) {
-    res.status(400).json({ error: error.message || "Nao foi possivel salvar o envio." });
+    logger.warn({ err: error.message, stack: error.stack }, "submission.failed");
+    const isValidation = [
+      "Envio rejeitado.",
+      "Sessao invalida. Recarregue a pagina.",
+      "Envio muito rapido. Releia as questoes antes de enviar.",
+      "Fora do periodo do edital.",
+      "Dados do candidato incompletos.",
+      "Respostas objetivas incompletas.",
+      "Respostas subjetivas incompletas.",
+      "Sessao invalida ou expirada. Recarregue a pagina."
+    ].includes(error.message);
+    res.status(isValidation ? 400 : 500).json({
+      error: isValidation ? error.message : "Nao foi possivel salvar o envio. Tente novamente em instantes."
+    });
   }
 });
 
@@ -1039,7 +1210,8 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
   try {
     res.json(await listSubmissions());
   } catch (error) {
-    res.status(500).json({ error: error.message || "Erro ao listar envios." });
+    logger.error({ err: error.message }, "admin.list.failed");
+    res.status(500).json({ error: "Erro ao listar envios. Verifique configuracao do banco." });
   }
 });
 
@@ -1062,10 +1234,35 @@ app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) =>
 app.patch("/api/admin/submissions/:id/note", requireAdmin, async (req, res) => {
   try {
     const adminNote = String(req.body?.adminNote || "").slice(0, 3000);
-    await updateAdminNote(req.params.id, adminNote);
-    res.json({ ok: true, adminNote });
+    const tags = Array.isArray(req.body?.tags) ? req.body.tags : undefined;
+    await updateAdminNote(req.params.id, adminNote, tags);
+    res.json({ ok: true, adminNote, tags });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao salvar observacao." });
+  }
+});
+
+app.get("/api/admin/report/approved.pdf", requireAdmin, async (req, res) => {
+  try {
+    const all = await listSubmissions();
+    const approved = all.filter((item) => item.status === "Aprovado");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="aprovados-defensoria.pdf"`);
+    const doc = new PDFDocument({ margin: 42, size: "A4" });
+    doc.pipe(res);
+    doc.fillColor("#071a2b").fontSize(18).text("Defensoria-Geral do Exercito", { align: "center" });
+    doc.fontSize(13).text(`Aprovados (${approved.length})`, { align: "center" });
+    doc.moveDown();
+    approved.forEach((submission, index) => {
+      if (index > 0) doc.addPage();
+      writeSubmissionPdf(doc, submission);
+    });
+    if (!approved.length) {
+      doc.fillColor("#17212a").fontSize(11).text("Nenhum candidato aprovado ainda.");
+    }
+    doc.end();
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao gerar PDF consolidado." });
   }
 });
 
