@@ -1,9 +1,28 @@
 {
   "version": 2,
   "builds": [
-    { "src": "server.js", "use": "@vercel/node" }
+    {
+      "src": "server.js",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "index.html",
+          "styles.css",
+          "app.js",
+          "manifest.json",
+          "sw.js",
+          "assets/**"
+        ],
+        "maxDuration": 30
+      }
+    }
   ],
   "routes": [
+    { "src": "/styles.css", "dest": "/server.js" },
+    { "src": "/app.js", "dest": "/server.js" },
+    { "src": "/manifest.json", "dest": "/server.js" },
+    { "src": "/sw.js", "dest": "/server.js" },
+    { "src": "/assets/(.*)", "dest": "/server.js" },
     { "src": "/(.*)", "dest": "/server.js" }
   ]
 }

@@ -229,7 +229,30 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_K
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(__dirname));
+app.use(express.static(__dirname, {
+  extensions: ["html"],
+  maxAge: process.env.VERCEL === "1" ? "1h" : 0
+}));
+
+app.get("/styles.css", (req, res) => {
+  res.type("text/css").sendFile(path.join(__dirname, "styles.css"));
+});
+
+app.get("/app.js", (req, res) => {
+  res.type("text/javascript").sendFile(path.join(__dirname, "app.js"));
+});
+
+app.get("/manifest.json", (req, res) => {
+  res.type("application/manifest+json").sendFile(path.join(__dirname, "manifest.json"));
+});
+
+app.get("/sw.js", (req, res) => {
+  res.type("text/javascript").sendFile(path.join(__dirname, "sw.js"));
+});
+
+app.get("/assets/:file", (req, res) => {
+  res.sendFile(path.join(__dirname, "assets", req.params.file));
+});
 
 app.get(["/admin", "/admin/"], (req, res) => {
   const token = String(req.query?.token || "");
@@ -650,6 +673,10 @@ async function saveSubmission(submission) {
     const { error } = await supabase.from("defensoria_submissions").insert(toDbRow(submission));
     if (error) throw normalizeDatabaseError(error);
     return;
+  }
+
+  if (process.env.VERCEL === "1") {
+    throw new Error("Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY nas variaveis de ambiente da Vercel.");
   }
 
   const submissions = await readLocalSubmissions();

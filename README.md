@@ -78,6 +78,25 @@ A Vercel **nao tem disco persistente**, entao em producao voce **precisa do Supa
 8. Acesse `https://<seu-projeto>.vercel.app` (candidato) e
    `https://<seu-projeto>.vercel.app/admin` (admin).
 
+### Se aparecer HTML puro sem design
+
+Isso acontece quando a Vercel nao empacota `styles.css`, `app.js` ou `assets/`.
+O `vercel.json` deste projeto ja inclui esses arquivos em `includeFiles` e o
+`server.js` serve `/styles.css`, `/app.js`, `/manifest.json`, `/sw.js` e
+`/assets/*` com MIME correto. Depois de atualizar esses arquivos, faca um novo
+deploy completo na Vercel.
+
+Na Vercel, configure obrigatoriamente:
+
+- `ADMIN_PIN`
+- `ADMIN_SESSION_SECRET`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `MIN_PERFORMANCE_PERCENT`
+
+Sem Supabase em producao, a API de envio retorna erro porque funcoes serverless
+nao possuem disco persistente.
+
 ### Webhook do Discord
 
 1. No canal desejado, **Editar canal -> Integracoes -> Webhooks -> Novo webhook**.

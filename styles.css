@@ -72,6 +72,17 @@
 [data-theme="dark"] .progress-track { background: #1f3447; }
 [data-theme="dark"] .modal-body { background: var(--surface); border-color: var(--line); color: var(--ink); }
 
+[data-theme="dark"] .question-title h3,
+[data-theme="dark"] .question-card h3,
+[data-theme="dark"] .option-row span,
+[data-theme="dark"] .subjective-tools,
+[data-theme="dark"] .field-grid label,
+[data-theme="dark"] .pin-field,
+[data-theme="dark"] .filter-row label,
+[data-theme="dark"] .admin-note {
+  color: #ffffff;
+}
+
 * {
   box-sizing: border-box;
 }
