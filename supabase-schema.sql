@@ -33,7 +33,17 @@ create unique index if not exists defensoria_submissions_roblox_unique_idx
 
 alter table public.defensoria_submissions
   add column if not exists status text not null default 'Em analise',
-  add column if not exists admin_note text not null default '';
+  add column if not exists admin_note text not null default '',
+  add column if not exists status_history jsonb not null default '[]'::jsonb,
+  add column if not exists seed text,
+  add column if not exists started_at timestamptz,
+  add column if not exists similarity_summary jsonb;
+
+create table if not exists public.defensoria_magic_links (
+  token_hash text primary key,
+  expires_at timestamptz not null,
+  used boolean not null default false
+);
 
 alter table public.defensoria_submissions enable row level security;
 

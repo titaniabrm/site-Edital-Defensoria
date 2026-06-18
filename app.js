@@ -1,188 +1,7 @@
-const objectiveQuestions = [
-  {
-    id: 1,
-    text: "O que e uma PETICAO INICIAL?",
-    options: [
-      "Documento que encerra o processo",
-      "Documento que da inicio ao processo e apresenta o pedido",
-      "Documento de defesa",
-      "Documento de arquivamento"
-    ],
-    answer: 1
-  },
-  {
-    id: 2,
-    text: "O que e um DESPACHO?",
-    options: [
-      "Decisao final do caso",
-      "Documento administrativo para andamento no processo",
-      "Defesa apresentada pela parte",
-      "Documento de arquivamento"
-    ],
-    answer: 1
-  },
-  {
-    id: 3,
-    text: "Caso nao existam provas suficientes para sustentar uma acusacao, o mais adequado e:",
-    options: [
-      "Aplicar punicao imediatamente",
-      "Ignorar a falta de provas",
-      "Solicitar mais diligencias ou producao de provas",
-      "Encerrar imediatamente sem analise"
-    ],
-    answer: 2
-  },
-  {
-    id: 4,
-    text: "O que e uma MANIFESTACAO?",
-    options: [
-      "Documento utilizado para apresentar posicionamento ou esclarecimento no processo",
-      "Documento de prisao",
-      "Arquivamento automatico",
-      "Documento administrativo militar apenas"
-    ],
-    answer: 0
-  },
-  {
-    id: 5,
-    text: "Qual e a funcao de uma DEFESA?",
-    options: [
-      "Acusar uma parte",
-      "Garantir contraditorio e apresentar argumentos/provas",
-      "Arquivar processo",
-      "Aplicar punicao"
-    ],
-    answer: 1
-  },
-  {
-    id: 6,
-    text: "O principio da AMPLA DEFESA significa:",
-    options: [
-      "A parte pode apresentar argumentos e provas para se defender",
-      "O processo deve ser rapido apenas",
-      "Apenas autoridades podem se manifestar",
-      "A defesa e opcional"
-    ],
-    answer: 0
-  },
-  {
-    id: 7,
-    text: "O que significa \"juntar aos autos\"?",
-    options: [
-      "Arquivar processo",
-      "Aplicar penalidade",
-      "Adicionar documentos ao processo",
-      "Excluir provas"
-    ],
-    answer: 2
-  },
-  {
-    id: 8,
-    text: "O que e uma PROVA DOCUMENTAL?",
-    options: [
-      "Testemunho verbal apenas",
-      "Documento ou registro que auxilia a comprovar fatos",
-      "Opiniao pessoal",
-      "Hipotese sem fundamento"
-    ],
-    answer: 1
-  },
-  {
-    id: 9,
-    text: "Se uma prova apresentar inconsistencias, deve-se:",
-    options: [
-      "Ignorar o problema",
-      "Considera-la automaticamente verdadeira",
-      "Verificar autenticidade e buscar esclarecimentos",
-      "Arquivar imediatamente"
-    ],
-    answer: 2
-  },
-  {
-    id: 10,
-    text: "O que significa um pedido ser DEFERIDO?",
-    options: [
-      "Foi recusado",
-      "Foi aprovado/aceito",
-      "Foi arquivado",
-      "Foi cancelado automaticamente"
-    ],
-    answer: 1
-  },
-  {
-    id: 11,
-    text: "O que significa um pedido ser INDEFERIDO?",
-    options: [
-      "Foi aceito",
-      "Foi encaminhado",
-      "Foi recusado",
-      "Foi colocado em sigilo"
-    ],
-    answer: 2
-  },
-  {
-    id: 12,
-    text: "Qual e a funcao da fase de instrucao processual?",
-    options: [
-      "Encerrar o processo",
-      "Produzir e analisar provas e informacoes",
-      "Aplicar penalidades",
-      "Arquivar documentos"
-    ],
-    answer: 1
-  },
-  {
-    id: 13,
-    text: "O CONTRADITORIO significa:",
-    options: [
-      "Apenas uma parte pode falar",
-      "Direito das partes se manifestarem sobre fatos e provas",
-      "O processo nao precisa de provas",
-      "O processo pode terminar sem defesa"
-    ],
-    answer: 1
-  },
-  {
-    id: 14,
-    text: "O que deve orientar a analise de um processo?",
-    options: [
-      "Opiniao pessoal",
-      "Pressa para finalizar",
-      "Imparcialidade e analise dos fatos/provas",
-      "Preferencia hierarquica"
-    ],
-    answer: 2
-  },
-  {
-    id: 15,
-    text: "Surgindo novas provas importantes durante a tramitacao, o correto e:",
-    options: [
-      "Ignorar",
-      "Analisar e incluir no processo conforme procedimento",
-      "Encerrar imediatamente",
-      "Remover provas anteriores"
-    ],
-    answer: 1
-  }
-];
-
-const subjectiveQuestions = [
-  "Explique com suas palavras o que e uma PETICAO INICIAL.",
-  "O que e um despacho e qual sua finalidade dentro de um processo?",
-  "O que deve ser feito quando um processo nao possui provas suficientes?",
-  "Explique o que e uma MANIFESTACAO processual.",
-  "Qual a importancia da ampla defesa em um procedimento?",
-  "O que significa agir com imparcialidade durante uma analise processual?",
-  "Explique a diferenca entre despacho, decisao e sentenca.",
-  "O que caracteriza uma prova valida em um processo?",
-  "Qual a funcao da defesa dentro de um procedimento?",
-  "O que deve ser analisado antes de emitir um parecer sobre um caso?",
-  "Qual a importancia da organizacao documental em um processo?",
-  "Como agir diante de informacoes contraditorias dentro de um caso?",
-  "Explique a importancia dos prazos processuais.",
-  "Qual deve ser a postura ideal de um membro da Defensoria durante a analise de um caso?",
-  "Em suas palavras, explique a importancia da analise de provas dentro de um procedimento."
-].map((text, index) => ({ id: index + 16, text }));
+let objectiveQuestions = [];
+let subjectiveQuestions = [];
+let examSeed = "";
+let formStartedAt = "";
 
 const DRAFT_KEY = "dge_draft_v1";
 
@@ -208,6 +27,51 @@ const riskFilter = document.querySelector("#riskFilter");
 const exportJsonButton = document.querySelector("#exportJsonButton");
 const exportCsvButton = document.querySelector("#exportCsvButton");
 const logoutAdminButton = document.querySelector("#logoutAdminButton");
+const searchInput = document.querySelector("#searchInput");
+const sortBy = document.querySelector("#sortBy");
+const sectionProgress = document.querySelector("#sectionProgress");
+const timeElapsed = document.querySelector("#timeElapsed");
+const toastStack = document.querySelector("#toastStack");
+const confirmModal = document.querySelector("#confirmModal");
+const confirmModalSummary = document.querySelector("#confirmModalSummary");
+const jumpPendingButton = document.querySelector("#jumpPendingButton");
+
+let dirtyDraft = false;
+let autoSaveTimer = null;
+const startedAt = Date.now();
+
+function toast(message, kind = "info", title = "") {
+  if (!toastStack) {
+    if (kind === "error") alert(message);
+    return;
+  }
+  const node = document.createElement("div");
+  node.className = `toast ${kind}`;
+  node.innerHTML = `${title ? `<strong>${escapeHtml(title)}</strong>` : ""}<span>${escapeHtml(message)}</span>`;
+  toastStack.appendChild(node);
+  setTimeout(() => {
+    node.style.opacity = "0";
+    node.style.transition = "opacity 200ms";
+    setTimeout(() => node.remove(), 220);
+  }, 4200);
+}
+
+function autoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    if (!dirtyDraft) return;
+    saveDraft();
+    dirtyDraft = false;
+  }, 900);
+}
+
+function tickClock() {
+  if (!timeElapsed) return;
+  const seconds = Math.floor((Date.now() - startedAt) / 1000);
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  timeElapsed.textContent = `Tempo: ${mm}:${ss}`;
+}
 const isAdminPage = window.location.pathname.replace(/\/$/, "") === "/admin" || window.location.hash === "#admin";
 
 if (isAdminPage) {
@@ -236,27 +100,27 @@ function normalizeText(value) {
 }
 
 function renderQuestions() {
-  objectiveMount.innerHTML = objectiveQuestions.map((question) => `
-    <article class="question-card">
+  objectiveMount.innerHTML = objectiveQuestions.map((question, qIndex) => `
+    <article class="question-card" data-question-id="${question.id}">
       <div class="question-title">
-        <h3>${question.id}. ${escapeHtml(question.text)}</h3>
+        <h3>${qIndex + 1}. ${escapeHtml(question.text)}</h3>
         <span>Objetiva</span>
       </div>
       <div class="options-list" role="radiogroup" aria-label="${escapeHtml(question.text)}">
-        ${question.options.map((option, index) => `
+        ${question.options.map((option, displayIndex) => `
           <label class="option-row">
-            <input type="radio" name="q${question.id}" value="${index}" required>
-            <span>${String.fromCharCode(65 + index)}) ${escapeHtml(option)}</span>
+            <input type="radio" name="q${question.id}" value="${option.originalIndex}" required>
+            <span>${String.fromCharCode(65 + displayIndex)}) ${escapeHtml(option.text)}</span>
           </label>
         `).join("")}
       </div>
     </article>
   `).join("");
 
-  subjectiveMount.innerHTML = subjectiveQuestions.map((question) => `
-    <article class="question-card">
+  subjectiveMount.innerHTML = subjectiveQuestions.map((question, qIndex) => `
+    <article class="question-card" data-question-id="${question.id}">
       <div class="question-title">
-        <h3>${question.id}. ${escapeHtml(question.text)}</h3>
+        <h3>${objectiveQuestions.length + qIndex + 1}. ${escapeHtml(question.text)}</h3>
         <span>Subjetiva</span>
       </div>
       <textarea name="q${question.id}" required minlength="25" placeholder="Digite sua resposta com suas palavras."></textarea>
@@ -421,18 +285,10 @@ function collectFormData() {
     tempoEb: String(data.get("tempoEb") || "").trim()
   };
 
-  const objectiveAnswers = objectiveQuestions.map((question) => {
-    const selected = Number(data.get(`q${question.id}`));
-    return {
-      id: question.id,
-      question: question.text,
-      selected,
-      selectedText: question.options[selected] ?? "",
-      correctIndex: question.answer,
-      correctText: question.options[question.answer],
-      isCorrect: selected === question.answer
-    };
-  });
+  const objectiveAnswers = objectiveQuestions.map((question) => ({
+    id: question.id,
+    selectedOriginalIndex: Number(data.get(`q${question.id}`))
+  }));
 
   const subjectiveAnswers = subjectiveQuestions.map((question) => ({
     id: question.id,
@@ -440,20 +296,13 @@ function collectFormData() {
     answer: String(data.get(`q${question.id}`) || "").trim()
   }));
 
-  const subjectiveReview = analyzeSubjectiveAnswers(subjectiveAnswers);
-  const objectiveScore = objectiveAnswers.filter((item) => item.isCorrect).length;
-
   return {
-    id: crypto.randomUUID(),
-    submittedAt: new Date().toISOString(),
     identity,
     objectiveAnswers,
-    subjectiveAnswers: subjectiveReview.answers,
-    objectiveScore,
-    objectiveTotal: objectiveQuestions.length,
-    aiRiskAverage: subjectiveReview.averageRisk,
-    aiFlaggedCount: subjectiveReview.flaggedCount,
-    aiHighRiskCount: subjectiveReview.highRiskCount
+    subjectiveAnswers,
+    seed: examSeed,
+    formStartedAt,
+    middlename: String(data.get("middlename") || "")
   };
 }
 
@@ -505,6 +354,71 @@ function updateProgress() {
   const percent = uniqueRequired.size ? Math.round((completedUnique.size / uniqueRequired.size) * 100) : 0;
   progressMetric.textContent = `${percent}%`;
   progressBar.style.width = `${percent}%`;
+
+  const identityFields = ["discord", "roblox", "tempoEb"];
+  const identityDone = identityFields.filter((name) => String(form.elements[name]?.value || "").trim()).length;
+  const objectiveDone = objectiveQuestions.filter((q) => form.querySelector(`[name="q${q.id}"]:checked`)).length;
+  const subjectiveDone = subjectiveQuestions.filter((q) => {
+    const value = form.elements[`q${q.id}`]?.value || "";
+    return value.trim() && countWords(value) >= 5;
+  }).length;
+
+  const counts = { identidade: [identityDone, 3], objetivas: [objectiveDone, 15], subjetivas: [subjectiveDone, 15] };
+  sectionProgress?.querySelectorAll("li").forEach((li) => {
+    const [done, total] = counts[li.dataset.section];
+    li.querySelector("strong").textContent = `${done}/${total}`;
+    li.dataset.complete = done === total ? "true" : "false";
+  });
+
+  objectiveQuestions.forEach((q) => {
+    const card = form.querySelector(`[name="q${q.id}"]`)?.closest(".question-card");
+    if (card) card.dataset.answered = form.querySelector(`[name="q${q.id}"]:checked`) ? "true" : "false";
+  });
+  subjectiveQuestions.forEach((q) => {
+    const ta = form.elements[`q${q.id}`];
+    const card = ta?.closest(".question-card");
+    if (card) card.dataset.answered = ta.value.trim() && countWords(ta.value) >= 5 ? "true" : "false";
+  });
+}
+
+function jumpToNextPending() {
+  const required = [...form.querySelectorAll("[required]")];
+  const pending = required.find((field) => {
+    if (field.type === "radio") return !form.querySelector(`[name="${field.name}"]:checked`);
+    return !String(field.value || "").trim();
+  });
+  if (!pending) {
+    toast("Todas as questoes ja foram respondidas.", "success");
+    return;
+  }
+  const card = pending.closest(".question-card") || pending.closest("label") || pending;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (pending.focus) setTimeout(() => pending.focus(), 350);
+}
+
+function openConfirmModal() {
+  const identity = ["discord", "roblox", "tempoEb"].filter((name) => String(form.elements[name]?.value || "").trim()).length;
+  const objectiveDone = objectiveQuestions.filter((q) => form.querySelector(`[name="q${q.id}"]:checked`)).length;
+  const subjectiveDone = subjectiveQuestions.filter((q) => {
+    const value = form.elements[`q${q.id}`]?.value || "";
+    return value.trim() && countWords(value) >= 5;
+  }).length;
+
+  const rows = [
+    { label: "Identificacao", done: identity, total: 3 },
+    { label: "Objetivas", done: objectiveDone, total: 15 },
+    { label: "Subjetivas", done: subjectiveDone, total: 15 }
+  ];
+  confirmModalSummary.innerHTML = rows.map((row) => `
+    <li class="${row.done === row.total ? "" : "missing"}">
+      <span>${row.label}</span><strong>${row.done}/${row.total}</strong>
+    </li>
+  `).join("");
+  confirmModal.classList.remove("hidden");
+}
+
+function closeConfirmModal() {
+  confirmModal.classList.add("hidden");
 }
 
 function validateForm() {
@@ -562,6 +476,14 @@ function renderSummary(submissions) {
   const rejected = submissions.filter((item) => item.status === "Reprovado").length;
   const review = submissions.filter((item) => item.status === "Em analise").length;
 
+  const scoreBuckets = [0, 0, 0, 0, 0];
+  const riskBuckets = [0, 0, 0, 0, 0];
+  submissions.forEach((item) => {
+    const score = (item.objectiveScore / item.objectiveTotal) * 100;
+    scoreBuckets[Math.min(4, Math.floor(score / 20))] += 1;
+    riskBuckets[Math.min(4, Math.floor(Number(item.aiRiskAverage || 0) / 20))] += 1;
+  });
+
   summaryGrid.innerHTML = `
     <div class="summary-card"><strong>${total}</strong><span>envios registrados</span></div>
     <div class="summary-card"><strong>${avgScore}%</strong><span>media nas objetivas</span></div>
@@ -570,7 +492,30 @@ function renderSummary(submissions) {
     <div class="summary-card"><strong>${approved}</strong><span>aprovados</span></div>
     <div class="summary-card"><strong>${review}</strong><span>em analise</span></div>
     <div class="summary-card"><strong>${rejected}</strong><span>reprovados</span></div>
+    <div class="summary-card chart-card">
+      <span>distribuicao de % objetivas</span>
+      ${renderBarChart(scoreBuckets, ["0-20", "20-40", "40-60", "60-80", "80-100"])}
+    </div>
+    <div class="summary-card chart-card">
+      <span>distribuicao de risco IA</span>
+      ${renderBarChart(riskBuckets, ["0-20", "20-40", "40-60", "60-80", "80-100"])}
+    </div>
   `;
+}
+
+function renderBarChart(values, labels) {
+  const max = Math.max(1, ...values);
+  const bars = values.map((value, index) => {
+    const height = Math.round((value / max) * 60);
+    return `
+      <g transform="translate(${index * 40 + 8}, 0)">
+        <rect x="0" y="${70 - height}" width="28" height="${height}" rx="3"></rect>
+        <text x="14" y="68" text-anchor="middle" class="bar-value">${value}</text>
+        <text x="14" y="92" text-anchor="middle" class="bar-label">${labels[index]}</text>
+      </g>
+    `;
+  }).join("");
+  return `<svg class="bar-chart" viewBox="0 0 220 100" role="img">${bars}</svg>`;
 }
 
 function renderSubmissionList(submissions) {
@@ -604,16 +549,36 @@ function renderSubmissionList(submissions) {
 
 function getFilteredSubmissions() {
   const filter = riskFilter?.value || "all";
-  const submissions = [...loadedSubmissions].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+  const sort = sortBy?.value || "date";
+  const term = normalizeText(searchInput?.value || "");
+
+  let submissions = [...loadedSubmissions];
+
+  if (term) {
+    submissions = submissions.filter((item) => {
+      const haystack = normalizeText(`${item.identity?.discord || ""} ${item.identity?.roblox || ""}`);
+      return haystack.includes(term);
+    });
+  }
 
   if (filter === "high") {
-    return submissions
-      .filter((item) => item.aiRiskAverage >= 35 || item.aiHighRiskCount > 0)
-      .sort((a, b) => b.aiRiskAverage - a.aiRiskAverage);
+    submissions = submissions.filter((item) => item.aiRiskAverage >= 35 || item.aiHighRiskCount > 0);
+  } else if (filter === "review") {
+    submissions = submissions.filter((item) => item.status === "Em analise");
+  } else if (filter === "approved") {
+    submissions = submissions.filter((item) => item.status === "Aprovado");
+  } else if (filter === "rejected") {
+    submissions = submissions.filter((item) => item.status === "Reprovado");
   }
-  if (filter === "review") return submissions.filter((item) => item.status === "Em analise");
-  if (filter === "approved") return submissions.filter((item) => item.status === "Aprovado");
-  if (filter === "rejected") return submissions.filter((item) => item.status === "Reprovado");
+
+  if (sort === "score") {
+    submissions.sort((a, b) => (b.objectiveScore / b.objectiveTotal) - (a.objectiveScore / a.objectiveTotal));
+  } else if (sort === "risk") {
+    submissions.sort((a, b) => b.aiRiskAverage - a.aiRiskAverage);
+  } else {
+    submissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+  }
+
   return submissions;
 }
 
@@ -651,11 +616,26 @@ function renderSubmissionDetail(submission) {
   const risk = riskLabel(submission.aiRiskAverage);
   const status = statusLabel(submission.status);
   const performance = submission.performancePercent ?? Math.round((submission.objectiveScore / submission.objectiveTotal) * 100);
+  const similarity = submission.similaritySummary || { maxRatio: 0, perQuestion: [], flagged: 0 };
+  const similarityRows = (similarity.perQuestion || [])
+    .filter((item) => item.bestRatio >= 30)
+    .sort((a, b) => b.bestRatio - a.bestRatio)
+    .slice(0, 6)
+    .map((item) => `<li>Q${item.id}: <strong>${item.bestRatio}%</strong> similar a ${escapeHtml(item.matchedCandidate || "?")}</li>`)
+    .join("");
+  const history = (submission.statusHistory || []).slice().reverse()
+    .map((entry) => `<li><strong>${escapeHtml(entry.status)}</strong> - ${formatDate(entry.at)} (${escapeHtml(entry.by || "?")})${entry.note ? `<br><span>${escapeHtml(entry.note)}</span>` : ""}</li>`)
+    .join("");
   submissionDetail.innerHTML = `
     <h3>${escapeHtml(submission.identity.discord)} - ${escapeHtml(submission.identity.roblox)}</h3>
     <div class="detail-actions">
       <span class="pill ${status.className}">${status.text}</span>
       <button class="secondary-button" type="button" data-download-pdf="${submission.id}">Baixar PDF</button>
+    </div>
+    <div class="status-actions">
+      <button class="primary-button" type="button" data-set-status="Aprovado" data-id="${submission.id}">Aprovar</button>
+      <button class="danger-button" type="button" data-set-status="Reprovado" data-id="${submission.id}">Reprovar</button>
+      <button class="secondary-button" type="button" data-set-status="Em analise" data-id="${submission.id}">Em analise</button>
     </div>
     <div class="detail-grid">
       <div class="detail-box"><span>Tempo no EB</span><strong>${escapeHtml(submission.identity.tempoEb)}</strong></div>
@@ -664,7 +644,11 @@ function renderSubmissionDetail(submission) {
       <div class="detail-box"><span>Desempenho</span><strong>${performance}%</strong></div>
       <div class="detail-box"><span>Triagem IA</span><strong>${risk.text} - ${submission.aiRiskAverage}% medio</strong></div>
       <div class="detail-box"><span>Analise</span><strong>${escapeHtml(submission.aiProvider || "groq")}</strong></div>
+      <div class="detail-box"><span>Similaridade maxima</span><strong>${similarity.maxRatio || 0}%</strong></div>
+      <div class="detail-box"><span>Subjetivas com cola</span><strong>${similarity.flagged || 0}</strong></div>
     </div>
+    ${similarityRows ? `<div class="answer-review"><span>Subjetivas mais parecidas com outro candidato</span><ul class="flag-list">${similarityRows}</ul></div>` : ""}
+    ${history ? `<div class="answer-review"><span>Historico de status</span><ul class="history-list">${history}</ul></div>` : ""}
     <label class="admin-note">
       <span>Observacao administrativa</span>
       <textarea id="adminNoteInput" placeholder="Escreva uma observacao para este candidato.">${escapeHtml(submission.adminNote || "")}</textarea>
@@ -795,90 +779,91 @@ function importJson(file) {
   reader.readAsText(file);
 }
 
+async function submitForm() {
+  if (!validateForm()) {
+    toast("Preencha todas as questoes antes de enviar.", "error", "Faltam respostas");
+    return;
+  }
+
+  const submitButton = form.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = "Enviando...";
+
+  try {
+    const submission = collectFormData();
+    const response = await fetch("/api/submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submission)
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar as respostas.");
+
+    localStorage.removeItem(DRAFT_KEY);
+    dirtyDraft = false;
+    confirmation.classList.remove("hidden");
+    confirmationText.textContent = `${submission.identity.discord}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%). Analise IA: ${result.aiRiskAverage}% de risco medio.`;
+    selectedSubmissionId = result.id;
+    if (reviewUnlocked) await loadAdminSubmissions();
+    confirmation.scrollIntoView({ behavior: "smooth", block: "center" });
+    toast("Avaliacao enviada.", "success", "Tudo certo");
+  } catch (error) {
+    toast(error.message, "error", "Erro no envio");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "Enviar respostas";
+  }
+}
+
 function bindEvents() {
   form.addEventListener("input", () => {
     updateCounters();
     updateProgress();
+    dirtyDraft = true;
+    autoSave();
   });
 
-  form.addEventListener("change", updateProgress);
+  form.addEventListener("change", () => {
+    updateProgress();
+    dirtyDraft = true;
+    autoSave();
+  });
 
-  form.addEventListener("submit", async (event) => {
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
-    if (!validateForm()) {
-      alert("Preencha todas as questoes antes de enviar.");
-      return;
-    }
+    openConfirmModal();
+  });
 
-    const submitButton = form.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    submitButton.textContent = "Enviando...";
+  document.querySelector("#cancelConfirm").addEventListener("click", closeConfirmModal);
+  document.querySelector("#okConfirm").addEventListener("click", () => {
+    closeConfirmModal();
+    submitForm();
+  });
+  confirmModal.addEventListener("click", (event) => {
+    if (event.target === confirmModal) closeConfirmModal();
+  });
 
-    try {
-      const submission = collectFormData();
-      const response = await fetch("/api/submissions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submission)
-      });
+  jumpPendingButton.addEventListener("click", jumpToNextPending);
 
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(result.error || "Nao foi possivel enviar as respostas.");
-      }
-
-      localStorage.removeItem(DRAFT_KEY);
-      confirmation.classList.remove("hidden");
-      confirmationText.textContent = `${submission.identity.discord}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%). Analise IA: ${result.aiRiskAverage}% de risco medio.`;
-      selectedSubmissionId = result.id;
-      if (reviewUnlocked) {
-        await loadAdminSubmissions();
-      }
-      confirmation.scrollIntoView({ behavior: "smooth", block: "center" });
-    } catch (error) {
-      alert(error.message);
-    } finally {
-      submitButton.disabled = false;
-      submitButton.textContent = "Enviar respostas";
+  window.addEventListener("beforeunload", (event) => {
+    if (dirtyDraft) {
+      event.preventDefault();
+      event.returnValue = "";
     }
   });
 
-  document.querySelector("#saveDraftButton").addEventListener("click", saveDraft);
+  document.querySelector("#saveDraftButton").addEventListener("click", () => {
+    saveDraft();
+    dirtyDraft = false;
+    toast("Rascunho salvo.", "success");
+  });
   document.querySelector("#newSubmissionButton").addEventListener("click", () => {
     form.reset();
     updateCounters();
     updateProgress();
     confirmation.classList.add("hidden");
     document.querySelector("#formulario").scrollIntoView({ behavior: "smooth" });
-  });
-
-  document.querySelector("#unlockReviewButton").addEventListener("click", unlockReview);
-  document.querySelector("#exportJsonButton").addEventListener("click", exportJson);
-  document.querySelector("#exportCsvButton").addEventListener("click", exportCsv);
-  document.querySelector("#importJsonInput").addEventListener("change", (event) => importJson(event.target.files[0]));
-
-  document.querySelector("#clearSubmissionsButton").addEventListener("click", async () => {
-    if (!confirm("Tem certeza que deseja apagar os envios salvos no banco?")) return;
-    const pin = document.querySelector("#adminPin").value.trim();
-    const response = await fetch("/api/admin/submissions", {
-      method: "DELETE",
-      headers: { "x-admin-pin": pin }
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      alert(data.error || "Nao foi possivel limpar os envios.");
-      return;
-    }
-    loadedSubmissions = [];
-    selectedSubmissionId = null;
-    renderReview();
-  });
-
-  submissionList.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-submission-id]");
-    if (!button) return;
-    selectedSubmissionId = button.dataset.submissionId;
-    renderReview();
   });
 
   document.querySelectorAll("[data-scroll-target]").forEach((button) => {
@@ -888,8 +873,185 @@ function bindEvents() {
   });
 }
 
-renderQuestions();
-loadDraft();
-bindEvents();
-updateCounters();
-updateProgress();
+async function loadExamFromServer() {
+  const response = await fetch("/api/exam", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Falha ao carregar o edital.");
+  const data = await response.json();
+  objectiveQuestions = data.objectives;
+  subjectiveQuestions = data.subjectives;
+  examSeed = data.seed;
+  formStartedAt = data.serverNow;
+  if (!data.isOpen) renderExamClosedBanner(data.examStartAt, data.examEndAt);
+}
+
+function renderExamClosedBanner(start, end) {
+  const banner = document.querySelector("#examClosedBanner");
+  if (!banner) return;
+  const fmt = (iso) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
+  banner.classList.remove("hidden");
+  banner.innerHTML = `<strong>Edital fora do periodo.</strong> Janela oficial: ${fmt(start)} a ${fmt(end)}.`;
+  const submit = form?.querySelector('button[type="submit"]');
+  if (submit) submit.disabled = true;
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("dge_theme", theme);
+  const button = document.querySelector("#themeToggle");
+  if (button) button.textContent = theme === "dark" ? "Tema claro" : "Tema escuro";
+}
+
+function bindTheme() {
+  const saved = localStorage.getItem("dge_theme") || (matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyTheme(saved);
+  document.querySelector("#themeToggle")?.addEventListener("click", () => {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    applyTheme(next);
+  });
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => console.warn("SW falhou", error));
+  });
+}
+
+async function boot() {
+  bindTheme();
+  registerServiceWorker();
+  if (!isAdminPage) {
+    try {
+      await loadExamFromServer();
+    } catch (error) {
+      toast(error.message, "error", "Carregar edital");
+      return;
+    }
+    renderQuestions();
+    loadDraft();
+    bindEvents();
+    updateCounters();
+    updateProgress();
+    tickClock();
+    setInterval(tickClock, 1000);
+  } else {
+    bindAdminOnlyEvents();
+  }
+}
+
+function bindAdminOnlyEvents() {
+  document.querySelector("#unlockReviewButton")?.addEventListener("click", unlockReview);
+  document.querySelector("#exportJsonButton")?.addEventListener("click", exportJson);
+  document.querySelector("#exportCsvButton")?.addEventListener("click", exportCsv);
+  document.querySelector("#importJsonInput")?.addEventListener("change", (event) => importJson(event.target.files[0]));
+  document.querySelector("#magicLinkButton")?.addEventListener("click", requestMagicLink);
+  document.querySelector("#clearSubmissionsButton")?.addEventListener("click", async () => {
+    if (!confirm("Tem certeza que deseja apagar os envios salvos no banco?")) return;
+    const pin = document.querySelector("#adminPin").value.trim();
+    const response = await fetch("/api/admin/submissions", { method: "DELETE", headers: { "x-admin-pin": pin } });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      toast(data.error || "Falha ao limpar.", "error");
+      return;
+    }
+    loadedSubmissions = [];
+    selectedSubmissionId = null;
+    renderReview();
+    toast("Envios apagados.", "success");
+  });
+  submissionList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-submission-id]");
+    if (!button) return;
+    selectedSubmissionId = button.dataset.submissionId;
+    renderReview();
+  });
+  submissionDetail?.addEventListener("click", handleSubmissionDetailClick);
+  searchInput?.addEventListener("input", () => renderReview());
+  sortBy?.addEventListener("change", () => renderReview());
+  riskFilter?.addEventListener("change", () => renderReview());
+  logoutAdminButton?.addEventListener("click", async () => {
+    await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" });
+    reviewUnlocked = false;
+    reviewDashboard.classList.add("hidden");
+    reviewLocked.classList.remove("hidden");
+    exportJsonButton.disabled = true;
+    exportCsvButton.disabled = true;
+    logoutAdminButton.disabled = true;
+    toast("Sessao admin encerrada.", "success");
+  });
+}
+
+async function handleSubmissionDetailClick(event) {
+  const setStatus = event.target.closest("[data-set-status]");
+  if (setStatus) {
+    const id = setStatus.dataset.id;
+    const status = setStatus.dataset.setStatus;
+    const note = prompt(`Observacao para "${status}" (opcional):`) || "";
+    const pin = document.querySelector("#adminPin").value.trim();
+    try {
+      const response = await fetch(`/api/admin/submissions/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-pin": pin },
+        credentials: "same-origin",
+        body: JSON.stringify({ status, note })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Falha ao atualizar status.");
+      const target = loadedSubmissions.find((item) => item.id === id);
+      if (target) {
+        target.status = status;
+        target.statusHistory = [...(target.statusHistory || []), data.entry];
+      }
+      renderReview();
+      toast(`Status: ${status}`, "success");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+    return;
+  }
+  const pdfBtn = event.target.closest("[data-download-pdf]");
+  if (pdfBtn) {
+    window.open(`/api/admin/submissions/${pdfBtn.dataset.downloadPdf}/report.pdf`, "_blank");
+    return;
+  }
+  const noteBtn = event.target.closest("[data-save-note]");
+  if (noteBtn) {
+    const id = noteBtn.dataset.saveNote;
+    const adminNote = document.querySelector("#adminNoteInput").value;
+    const pin = document.querySelector("#adminPin").value.trim();
+    try {
+      const response = await fetch(`/api/admin/submissions/${id}/note`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-pin": pin },
+        credentials: "same-origin",
+        body: JSON.stringify({ adminNote })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Falha ao salvar observacao.");
+      const target = loadedSubmissions.find((item) => item.id === id);
+      if (target) target.adminNote = adminNote;
+      toast("Observacao salva.", "success");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+  }
+}
+
+async function requestMagicLink() {
+  const pin = document.querySelector("#adminPin").value.trim();
+  try {
+    const response = await fetch("/api/admin/magic", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-pin": pin },
+      credentials: "same-origin"
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Falha ao gerar link.");
+    await navigator.clipboard?.writeText(data.url).catch(() => {});
+    toast(`Link copiado. Valido ate ${new Date(data.expiresAt).toLocaleTimeString("pt-BR")}.`, "success", "Magic link");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+boot();

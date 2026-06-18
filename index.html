@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Edital | Defensoria-Geral do Exercito</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#071a2b">
 </head>
 <body>
   <header class="topbar">
@@ -16,11 +18,13 @@
       </div>
     </div>
     <nav class="top-actions" aria-label="Atalhos">
+      <button class="ghost-button" type="button" id="themeToggle">Tema escuro</button>
       <button class="ghost-button" type="button" data-scroll-target="formulario">Formulario</button>
     </nav>
   </header>
 
   <main>
+    <div id="examClosedBanner" class="exam-banner hidden" role="status"></div>
     <section class="hero candidate-only">
       <div class="hero-copy">
         <p class="eyebrow">Avaliacao de ingresso</p>
@@ -39,7 +43,13 @@
         <div class="progress-track" aria-hidden="true">
           <span id="progressBar"></span>
         </div>
+        <ul class="section-progress" id="sectionProgress" aria-label="Progresso por secao">
+          <li data-section="identidade"><span>Identificacao</span><strong>0/3</strong></li>
+          <li data-section="objetivas"><span>Objetivas</span><strong>0/15</strong></li>
+          <li data-section="subjetivas"><span>Subjetivas</span><strong>0/15</strong></li>
+        </ul>
         <p id="draftStatus">Rascunho nao salvo nesta sessao.</p>
+        <p class="time-elapsed" id="timeElapsed" aria-live="polite">Tempo: 00:00</p>
       </aside>
     </section>
 
@@ -77,6 +87,11 @@
     </section>
 
     <form id="examForm" class="form-shell candidate-only" autocomplete="off">
+      <div class="honeypot" aria-hidden="true">
+        <label>Nome do meio (deixe em branco)
+          <input type="text" name="middlename" tabindex="-1" autocomplete="off">
+        </label>
+      </div>
       <section id="formulario" class="form-section" aria-labelledby="dadosTitulo">
         <div class="section-heading">
           <p class="eyebrow">Identificacao</p>
@@ -120,11 +135,25 @@
           <p>Ao enviar, o sistema salva a inscricao no banco configurado e gera um parecer para a banca revisar.</p>
         </div>
         <div class="submit-actions">
+          <button class="ghost-button" type="button" id="jumpPendingButton">Ir para proxima pendente</button>
           <button class="secondary-button" type="button" id="saveDraftButton">Salvar rascunho</button>
           <button class="primary-button" type="submit">Enviar respostas</button>
         </div>
       </section>
     </form>
+
+    <div id="confirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+      <div class="modal-body">
+        <p class="eyebrow">Revisao final</p>
+        <h2 id="confirmModalTitle">Confirmar envio</h2>
+        <p id="confirmModalText">Voce respondeu todas as questoes obrigatorias?</p>
+        <ul class="modal-summary" id="confirmModalSummary"></ul>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" id="cancelConfirm">Voltar e revisar</button>
+          <button class="primary-button" type="button" id="okConfirm">Enviar agora</button>
+        </div>
+      </div>
+    </div>
 
     <section id="confirmation" class="confirmation hidden candidate-only" aria-live="polite">
       <div>
@@ -152,6 +181,7 @@
         <button class="primary-button" type="button" id="unlockReviewButton">Entrar</button>
         <button class="secondary-button" type="button" id="exportJsonButton" disabled>Exportar JSON</button>
         <button class="secondary-button" type="button" id="exportCsvButton" disabled>Exportar CSV</button>
+        <button class="secondary-button" type="button" id="magicLinkButton">Gerar magic link</button>
         <button class="secondary-button" type="button" id="logoutAdminButton" disabled>Sair</button>
         <label class="file-import">
           <span>Importar JSON</span>
@@ -173,6 +203,10 @@
             </div>
             <div class="filter-row">
               <label>
+                <span>Buscar</span>
+                <input id="searchInput" type="search" placeholder="Discord ou Roblox">
+              </label>
+              <label>
                 <span>Filtro</span>
                 <select id="riskFilter">
                   <option value="all">Todos</option>
@@ -180,6 +214,14 @@
                   <option value="review">Em analise</option>
                   <option value="approved">Aprovados</option>
                   <option value="rejected">Reprovados</option>
+                </select>
+              </label>
+              <label>
+                <span>Ordenar</span>
+                <select id="sortBy">
+                  <option value="date">Mais recentes</option>
+                  <option value="score">Maior % objetivas</option>
+                  <option value="risk">Maior risco IA</option>
                 </select>
               </label>
             </div>
@@ -198,6 +240,7 @@
     <span>Ferramenta local de edital e avaliacao</span>
   </footer>
 
+  <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
   <script src="app.js"></script>
 </body>
 </html>

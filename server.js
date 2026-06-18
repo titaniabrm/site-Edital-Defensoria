@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import PDFDocument from "pdfkit";
+import pino from "pino";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,8 +16,19 @@ const ADMIN_PIN = process.env.ADMIN_PIN || "DGE-2026";
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PIN;
 const MIN_PERFORMANCE_PERCENT = Number(process.env.MIN_PERFORMANCE_PERCENT || 70);
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const EXAM_START_AT = process.env.EXAM_START_AT || "2026-06-19T15:00:00Z"; // 19/06/2026 12:00 BRT
+const EXAM_END_AT = process.env.EXAM_END_AT || "2026-06-21T23:00:00Z";   // 21/06/2026 20:00 BRT
+const MIN_FORM_DURATION_MS = Number(process.env.MIN_FORM_DURATION_MS || 30_000);
+const HONEYPOT_FIELD = "middlename";
+const PUBLIC_ADMIN_URL = process.env.PUBLIC_ADMIN_URL || "";
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || "";
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "submissions.json");
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || "info",
+  base: { svc: "edital-defensoria" }
+});
 
 const objectiveQuestions = [
   { id: 1, text: "O que e uma PETICAO INICIAL?", answer: 1, options: ["Documento que encerra o processo", "Documento que da inicio ao processo e apresenta o pedido", "Documento de defesa", "Documento de arquivamento"] },
@@ -36,6 +48,179 @@ const objectiveQuestions = [
   { id: 15, text: "Surgindo novas provas importantes durante a tramitacao, o correto e:", answer: 1, options: ["Ignorar", "Analisar e incluir no processo conforme procedimento", "Encerrar imediatamente", "Remover provas anteriores"] }
 ];
 
+const subjectiveQuestions = [
+  "Explique com suas palavras o que e uma PETICAO INICIAL.",
+  "O que e um despacho e qual sua finalidade dentro de um processo?",
+  "O que deve ser feito quando um processo nao possui provas suficientes?",
+  "Explique o que e uma MANIFESTACAO processual.",
+  "Qual a importancia da ampla defesa em um procedimento?",
+  "O que significa agir com imparcialidade durante uma analise processual?",
+  "Explique a diferenca entre despacho, decisao e sentenca.",
+  "O que caracteriza uma prova valida em um processo?",
+  "Qual a funcao da defesa dentro de um procedimento?",
+  "O que deve ser analisado antes de emitir um parecer sobre um caso?",
+  "Qual a importancia da organizacao documental em um processo?",
+  "Como agir diante de informacoes contraditorias dentro de um caso?",
+  "Explique a importancia dos prazos processuais.",
+  "Qual deve ser a postura ideal de um membro da Defensoria durante a analise de um caso?",
+  "Em suas palavras, explique a importancia da analise de provas dentro de um procedimento."
+].map((text, index) => ({ id: index + 16, text }));
+
+function fnv1a(value) {
+  let hash = 0x811c9dc5;
+  const str = String(value);
+  for (let i = 0; i < str.length; i += 1) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function mulberry32(seed) {
+  let state = seed >>> 0;
+  return function next() {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function shuffleWithSeed(items, seedString) {
+  const rand = mulberry32(fnv1a(seedString));
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function buildExamForSession(seed) {
+  const objectives = shuffleWithSeed(objectiveQuestions, `${seed}|q`).map((question) => {
+    const options = shuffleWithSeed(
+      question.options.map((text, originalIndex) => ({ text, originalIndex })),
+      `${seed}|q${question.id}|o`
+    );
+    return { id: question.id, text: question.text, options };
+  });
+  const subjectives = subjectiveQuestions.map((q) => ({ id: q.id, text: q.text }));
+  return { objectives, subjectives, seed };
+}
+
+function withinExamWindow(now = new Date()) {
+  const start = new Date(EXAM_START_AT);
+  const end = new Date(EXAM_END_AT);
+  return now >= start && now <= end;
+}
+
+function shingles(text, size = 4) {
+  const tokens = normalizeText(text).split(" ").filter(Boolean);
+  const set = new Set();
+  if (tokens.length < size) return set;
+  for (let i = 0; i <= tokens.length - size; i += 1) {
+    set.add(tokens.slice(i, i + size).join(" "));
+  }
+  return set;
+}
+
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const item of a) if (b.has(item)) inter += 1;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+function buildSimilaritySummary(currentAnswers, priorSubmissions) {
+  const perQuestion = currentAnswers.map((answer) => {
+    const sourceShingles = shingles(answer.answer);
+    let best = { ratio: 0, candidate: null, candidateId: null };
+    for (const prior of priorSubmissions) {
+      const priorAnswer = prior.subjectiveAnswers?.find((item) => Number(item.id) === Number(answer.id));
+      if (!priorAnswer) continue;
+      const ratio = jaccard(sourceShingles, shingles(priorAnswer.answer));
+      if (ratio > best.ratio) {
+        best = {
+          ratio,
+          candidate: prior.identity?.discord || prior.identity?.roblox || prior.id,
+          candidateId: prior.id
+        };
+      }
+    }
+    return {
+      id: answer.id,
+      bestRatio: Math.round(best.ratio * 100),
+      matchedCandidate: best.candidate,
+      matchedSubmissionId: best.candidateId
+    };
+  });
+  const maxRatio = perQuestion.reduce((max, item) => Math.max(max, item.bestRatio), 0);
+  const flagged = perQuestion.filter((item) => item.bestRatio >= 55).length;
+  return { perQuestion, maxRatio, flagged };
+}
+
+function newStatusEntry(status, note, by) {
+  return {
+    status,
+    at: new Date().toISOString(),
+    note: note ? String(note).slice(0, 400) : "",
+    by: by || "admin"
+  };
+}
+
+const magicLinkStore = new Map();
+
+function createMagicLink() {
+  const token = crypto.randomBytes(24).toString("hex");
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  magicLinkStore.set(hash, { expiresAt, used: false });
+  return { token, expiresAt };
+}
+
+function consumeMagicLink(token) {
+  if (!token) return false;
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  const entry = magicLinkStore.get(hash);
+  if (!entry || entry.used || Date.now() > entry.expiresAt) return false;
+  entry.used = true;
+  return true;
+}
+
+async function notifyDiscord(submission, baseUrl) {
+  if (!DISCORD_WEBHOOK_URL) return;
+  const target = baseUrl ? `${baseUrl.replace(/\/$/, "")}/admin` : (PUBLIC_ADMIN_URL || "");
+  const payload = {
+    username: "Defensoria-Geral do Exercito",
+    embeds: [{
+      title: "Novo envio registrado",
+      url: target || undefined,
+      color: 0xd7ad5d,
+      fields: [
+        { name: "Discord", value: submission.identity.discord || "-", inline: true },
+        { name: "Roblox", value: submission.identity.roblox || "-", inline: true },
+        { name: "Tempo no EB", value: submission.identity.tempoEb || "-", inline: true },
+        { name: "Objetivas", value: `${submission.objectiveScore}/${submission.objectiveTotal} (${submission.performancePercent}%)`, inline: true },
+        { name: "Risco IA medio", value: `${submission.aiRiskAverage}%`, inline: true },
+        { name: "Status", value: submission.status, inline: true }
+      ],
+      timestamp: submission.submittedAt
+    }]
+  };
+  try {
+    const response = await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!response.ok) logger.warn({ status: response.status }, "discord webhook nao OK");
+  } catch (error) {
+    logger.warn({ err: error.message }, "discord webhook falhou");
+  }
+}
+
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false }
@@ -47,6 +232,13 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.static(__dirname));
 
 app.get(["/admin", "/admin/"], (req, res) => {
+  const token = String(req.query?.token || "");
+  if (token && consumeMagicLink(token)) {
+    setAdminCookie(res);
+    logger.info({ event: "magic.consumed" }, "magic link usado");
+    res.redirect("/admin");
+    return;
+  }
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
@@ -325,10 +517,37 @@ function calculateObjectiveAnswers(receivedAnswers) {
   });
 }
 
+export {
+  heuristicReview,
+  fallbackAiReview,
+  buildSimilaritySummary,
+  shuffleWithSeed,
+  mulberry32,
+  fnv1a,
+  jaccard,
+  shingles,
+  withinExamWindow,
+  buildExamForSession
+};
+
 function validateSubmission(body) {
   const identity = body?.identity || {};
   const objectiveAnswers = Array.isArray(body?.objectiveAnswers) ? body.objectiveAnswers : [];
   const subjectiveAnswers = Array.isArray(body?.subjectiveAnswers) ? body.subjectiveAnswers : [];
+
+  if (String(body?.[HONEYPOT_FIELD] || "").trim()) {
+    throw new Error("Envio rejeitado.");
+  }
+  const startedAtRaw = body?.formStartedAt ? new Date(body.formStartedAt) : null;
+  if (!startedAtRaw || Number.isNaN(startedAtRaw.getTime())) {
+    throw new Error("Sessao invalida. Recarregue a pagina.");
+  }
+  if (Date.now() - startedAtRaw.getTime() < MIN_FORM_DURATION_MS) {
+    throw new Error("Envio muito rapido. Releia as questoes antes de enviar.");
+  }
+  if (!withinExamWindow()) {
+    throw new Error("Fora do periodo do edital.");
+  }
 
   if (!identity.discord?.trim() || !identity.roblox?.trim() || !identity.tempoEb?.trim()) {
     throw new Error("Dados do candidato incompletos.");
@@ -340,18 +559,27 @@ function validateSubmission(body) {
     throw new Error("Respostas subjetivas incompletas.");
   }
 
+  const normalizedObjective = objectiveAnswers.map((item) => {
+    const selected = Number.isInteger(Number(item.selectedOriginalIndex))
+      ? Number(item.selectedOriginalIndex)
+      : Number(item.selected);
+    return { id: Number(item.id), selected };
+  });
+
   return {
     identity: {
       discord: String(identity.discord).trim(),
       roblox: String(identity.roblox).trim(),
       tempoEb: String(identity.tempoEb).trim()
     },
-    objectiveAnswers,
+    objectiveAnswers: normalizedObjective,
     subjectiveAnswers: subjectiveAnswers.map((item) => ({
       id: Number(item.id),
       question: String(item.question || ""),
       answer: String(item.answer || "").trim()
-    }))
+    })),
+    seed: String(body?.seed || "").slice(0, 80),
+    startedAt: startedAtRaw.toISOString()
   };
 }
 
@@ -380,6 +608,10 @@ function toDbRow(submission) {
     performance_percent: submission.performancePercent,
     status: submission.status,
     admin_note: submission.adminNote || "",
+    status_history: submission.statusHistory || [],
+    seed: submission.seed || null,
+    started_at: submission.startedAt || null,
+    similarity_summary: submission.similaritySummary || null,
     ai_risk_average: submission.aiRiskAverage,
     ai_flagged_count: submission.aiFlaggedCount,
     ai_high_risk_count: submission.aiHighRiskCount,
@@ -401,6 +633,10 @@ function fromDbRow(row) {
     performancePercent: Number(row.performance_percent),
     status: row.status || getAutomaticStatus(Number(row.performance_percent), row.ai_risk_average, row.ai_high_risk_count),
     adminNote: row.admin_note || "",
+    statusHistory: row.status_history || [],
+    seed: row.seed || null,
+    startedAt: row.started_at || null,
+    similaritySummary: row.similarity_summary || null,
     aiRiskAverage: row.ai_risk_average,
     aiFlaggedCount: row.ai_flagged_count,
     aiHighRiskCount: row.ai_high_risk_count,
@@ -444,6 +680,34 @@ async function getSubmissionById(id) {
 
   const submissions = await readLocalSubmissions();
   return submissions.find((submission) => submission.id === id);
+}
+
+async function updateSubmissionStatus(id, status, note, by) {
+  const entry = newStatusEntry(status, note, by);
+  if (supabase) {
+    const { data: existing, error: readError } = await supabase
+      .from("defensoria_submissions")
+      .select("status_history")
+      .eq("id", id)
+      .single();
+    if (readError) throw normalizeDatabaseError(readError);
+    const history = Array.isArray(existing?.status_history) ? existing.status_history : [];
+    history.push(entry);
+    const { error } = await supabase
+      .from("defensoria_submissions")
+      .update({ status, status_history: history })
+      .eq("id", id);
+    if (error) throw normalizeDatabaseError(error);
+    return entry;
+  }
+
+  const submissions = await readLocalSubmissions();
+  const index = submissions.findIndex((submission) => submission.id === id);
+  if (index === -1) throw new Error("Candidato nao encontrado.");
+  submissions[index].status = status;
+  submissions[index].statusHistory = [...(submissions[index].statusHistory || []), entry];
+  await writeLocalSubmissions(submissions);
+  return entry;
 }
 
 async function updateAdminNote(id, adminNote) {
@@ -550,6 +814,74 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+app.get("/api/exam", (req, res) => {
+  const seed = crypto.randomBytes(12).toString("hex");
+  const exam = buildExamForSession(seed);
+  res.json({
+    seed,
+    serverNow: new Date().toISOString(),
+    examStartAt: EXAM_START_AT,
+    examEndAt: EXAM_END_AT,
+    isOpen: withinExamWindow(),
+    honeypotField: HONEYPOT_FIELD,
+    minDurationMs: MIN_FORM_DURATION_MS,
+    ...exam
+  });
+});
+
+app.get("/api/config", (req, res) => {
+  res.json({
+    examStartAt: EXAM_START_AT,
+    examEndAt: EXAM_END_AT,
+    isOpen: withinExamWindow(),
+    minPerformancePercent: MIN_PERFORMANCE_PERCENT
+  });
+});
+
+app.post("/api/admin/magic", requireAdmin, (req, res) => {
+  const { token, expiresAt } = createMagicLink();
+  const baseUrl = PUBLIC_ADMIN_URL || `${req.protocol}://${req.get("host")}`;
+  const url = `${baseUrl.replace(/\/$/, "")}/admin?token=${token}`;
+  logger.info({ event: "magic.created", expiresAt }, "magic link gerado");
+  if (DISCORD_WEBHOOK_URL) {
+    fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "Defensoria-Geral do Exercito",
+        content: `Magic link admin (valido por 30 min):\n${url}`
+      })
+    }).catch((error) => logger.warn({ err: error.message }, "magic webhook falhou"));
+  }
+  res.json({ url, expiresAt });
+});
+
+app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
+  try {
+    const submissions = await listSubmissions();
+    const perDay = new Map();
+    const riskBuckets = [0, 0, 0, 0, 0];
+    const scoreBuckets = [0, 0, 0, 0, 0];
+    submissions.forEach((item) => {
+      const day = item.submittedAt?.slice(0, 10) || "?";
+      perDay.set(day, (perDay.get(day) || 0) + 1);
+      const riskBucket = Math.min(4, Math.floor(Number(item.aiRiskAverage || 0) / 20));
+      riskBuckets[riskBucket] += 1;
+      const score = (item.objectiveScore / item.objectiveTotal) * 100;
+      const scoreBucket = Math.min(4, Math.floor(score / 20));
+      scoreBuckets[scoreBucket] += 1;
+    });
+    res.json({
+      total: submissions.length,
+      perDay: [...perDay.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      riskBuckets,
+      scoreBuckets
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao gerar metricas." });
+  }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
@@ -578,7 +910,31 @@ app.get("/api/admin/session", (req, res) => {
   res.json({ authenticated: isValidAdminSession(cookies.admin_session) });
 });
 
-app.post("/api/submissions", async (req, res) => {
+const submissionRate = new Map();
+const SUBMISSION_RATE_WINDOW_MS = 60 * 1000;
+const SUBMISSION_RATE_MAX = 3;
+
+function rateLimitSubmissions(req, res, next) {
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown")
+    .toString()
+    .split(",")[0]
+    .trim();
+  const now = Date.now();
+  const entry = submissionRate.get(ip) || { count: 0, reset: now + SUBMISSION_RATE_WINDOW_MS };
+  if (now > entry.reset) {
+    entry.count = 0;
+    entry.reset = now + SUBMISSION_RATE_WINDOW_MS;
+  }
+  entry.count += 1;
+  submissionRate.set(ip, entry);
+  if (entry.count > SUBMISSION_RATE_MAX) {
+    res.status(429).json({ error: "Muitas tentativas. Aguarde um minuto antes de tentar de novo." });
+    return;
+  }
+  next();
+}
+
+app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
   try {
     const valid = validateSubmission(req.body);
     const duplicate = await findDuplicateSubmission(valid.identity);
@@ -597,6 +953,9 @@ app.post("/api/submissions", async (req, res) => {
     const aiReview = await analyzeWithGroq(valid.subjectiveAnswers);
     const status = getAutomaticStatus(performancePercent, aiReview.averageRisk, aiReview.highRiskCount);
 
+    const priorSubmissions = await listSubmissions();
+    const similaritySummary = buildSimilaritySummary(valid.subjectiveAnswers, priorSubmissions);
+
     const submission = {
       id: crypto.randomUUID(),
       submittedAt: new Date().toISOString(),
@@ -608,6 +967,10 @@ app.post("/api/submissions", async (req, res) => {
       performancePercent,
       status,
       adminNote: "",
+      statusHistory: [newStatusEntry(status, "Status automatico", "system")],
+      seed: valid.seed,
+      startedAt: valid.startedAt,
+      similaritySummary,
       aiRiskAverage: aiReview.averageRisk,
       aiFlaggedCount: aiReview.flaggedCount,
       aiHighRiskCount: aiReview.highRiskCount,
@@ -617,6 +980,17 @@ app.post("/api/submissions", async (req, res) => {
     };
 
     await saveSubmission(submission);
+    logger.info({
+      event: "submission.created",
+      id: submission.id,
+      discord: submission.identity.discord,
+      score: performancePercent,
+      risk: submission.aiRiskAverage,
+      simMax: similaritySummary.maxRatio,
+      status
+    }, "novo envio");
+    const baseUrl = PUBLIC_ADMIN_URL || `${req.protocol}://${req.get("host")}`;
+    notifyDiscord(submission, baseUrl);
     res.status(201).json({
       id: submission.id,
       objectiveScore,
@@ -625,6 +999,7 @@ app.post("/api/submissions", async (req, res) => {
       aiRiskAverage: submission.aiRiskAverage,
       aiFlaggedCount: submission.aiFlaggedCount,
       aiHighRiskCount: submission.aiHighRiskCount,
+      similarityMax: similaritySummary.maxRatio,
       status,
       aiProvider: submission.aiProvider
     });
@@ -638,6 +1013,22 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
     res.json(await listSubmissions());
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao listar envios." });
+  }
+});
+
+app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) => {
+  try {
+    const status = String(req.body?.status || "").trim();
+    if (!["Aprovado", "Reprovado", "Em analise"].includes(status)) {
+      res.status(400).json({ error: "Status invalido." });
+      return;
+    }
+    const note = String(req.body?.note || "");
+    const entry = await updateSubmissionStatus(req.params.id, status, note, "admin");
+    logger.info({ event: "submission.status", id: req.params.id, status }, "status atualizado");
+    res.json({ ok: true, status, entry });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao atualizar status." });
   }
 });
 
@@ -688,7 +1079,11 @@ app.delete("/api/admin/submissions", requireAdmin, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Edital Defensoria em http://127.0.0.1:${PORT}`);
-  console.log(`Banco ativo: ${supabase ? "Supabase" : "JSON local"}`);
-});
+const isMainModule = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` || import.meta.url.endsWith(path.basename(process.argv[1] || ""));
+if (isMainModule && process.env.VERCEL !== "1" && process.env.NODE_ENV !== "test") {
+  app.listen(PORT, () => {
+    logger.info({ port: PORT, database: supabase ? "supabase" : "local-json" }, "Edital Defensoria online");
+  });
+}
+
+export default app;
