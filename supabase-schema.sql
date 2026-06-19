@@ -43,6 +43,25 @@ alter table public.defensoria_submissions
   add column if not exists ua_hash text,
   add column if not exists paste_count integer not null default 0;
 
+create table if not exists public.defensoria_config (
+  id integer primary key default 1,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.defensoria_config (id, data)
+  values (1, '{}'::jsonb)
+  on conflict (id) do nothing;
+
+alter table public.defensoria_config enable row level security;
+
+drop policy if exists "No public access to defensoria config" on public.defensoria_config;
+create policy "No public access to defensoria config"
+  on public.defensoria_config
+  for all
+  using (false)
+  with check (false);
+
 create table if not exists public.defensoria_magic_links (
   token_hash text primary key,
   expires_at timestamptz not null,

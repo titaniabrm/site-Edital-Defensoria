@@ -20,11 +20,27 @@ const EXAM_START_AT = process.env.EXAM_START_AT || "2026-06-19T15:00:00Z"; // 19
 const EXAM_END_AT = process.env.EXAM_END_AT || "2026-06-21T23:00:00Z";   // 21/06/2026 20:00 BRT
 const MIN_FORM_DURATION_MS = Number(process.env.MIN_FORM_DURATION_MS || 30_000);
 const HONEYPOT_FIELD = "middlename";
-const PUBLIC_ADMIN_URL = process.env.PUBLIC_ADMIN_URL || "";
-const ADMIN_PANEL_ORIGIN = process.env.ADMIN_PANEL_ORIGIN || "";
+
+// URLs fixas (nao sao segredo, podem ficar no codigo).
+// Se mudar a URL da Vercel, edite aqui ou sobrescreva por env var.
+const DEFENSORIA_URL = process.env.DEFENSORIA_URL
+  || "https://site-edital-defensoria-bly26wwtg-titaniabrm-1862s-projects.vercel.app";
+const PUBLIC_ADMIN_URL = process.env.PUBLIC_ADMIN_URL
+  || "https://edital-defensoria-painel-ppqjtkr6e-titaniabrm-1862s-projects.vercel.app";
+const ADMIN_PANEL_ORIGIN = process.env.ADMIN_PANEL_ORIGIN || PUBLIC_ADMIN_URL;
+const DISCORD_REDIRECT_URI = process.env.DISCORD_REDIRECT_URI
+  || `${DEFENSORIA_URL}/api/admin/discord/callback`;
+
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || "";
+const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID || "";
+const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET || "";
+const DISCORD_ALLOWED_USERS = (process.env.DISCORD_ALLOWED_USERS || "mudinhoxy,titaniabrjv,yoursalf_.7")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "submissions.json");
+const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const IP_HASH_SALT = process.env.IP_HASH_SALT || ADMIN_SESSION_SECRET;
 
 if (ADMIN_PIN === "DGE-2026") {
@@ -120,9 +136,61 @@ function buildExamForSession(seed) {
   return { objectives, subjectives, seed };
 }
 
+let runtimeConfig = {};
+
+async function loadRuntimeConfig() {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("defensoria_config")
+        .select("data")
+        .eq("id", 1)
+        .single();
+      if (!error && data) runtimeConfig = data.data || {};
+    } catch (e) {
+      logger.warn({ err: e.message }, "config.load.supabase.failed");
+    }
+    return;
+  }
+  try {
+    const raw = await fs.readFile(CONFIG_FILE, "utf8");
+    runtimeConfig = JSON.parse(raw);
+  } catch {
+    runtimeConfig = {};
+  }
+}
+
+async function saveRuntimeConfig(next) {
+  if (supabase) {
+    const { error } = await supabase
+      .from("defensoria_config")
+      .upsert({ id: 1, data: next, updated_at: new Date().toISOString() });
+    if (error) throw normalizeDatabaseError(error);
+  } else {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), "utf8");
+  }
+  runtimeConfig = next;
+}
+
+function getExamStart() { return runtimeConfig.examStartAt || EXAM_START_AT; }
+function getExamEnd() { return runtimeConfig.examEndAt || EXAM_END_AT; }
+function getMinPerformance() {
+  const v = Number(runtimeConfig.minPerformancePercent);
+  return Number.isFinite(v) ? v : MIN_PERFORMANCE_PERCENT;
+}
+function getMinFormDuration() {
+  const v = Number(runtimeConfig.minFormDurationMs);
+  return Number.isFinite(v) ? v : MIN_FORM_DURATION_MS;
+}
+function getAllowedDiscord() {
+  const list = runtimeConfig.discordAllowedUsers;
+  return Array.isArray(list) && list.length ? list : DISCORD_ALLOWED_USERS;
+}
+
 function withinExamWindow(now = new Date()) {
-  const start = new Date(EXAM_START_AT);
-  const end = new Date(EXAM_END_AT);
+  const start = new Date(getExamStart());
+  const end = new Date(getExamEnd());
   return now >= start && now <= end;
 }
 
@@ -364,7 +432,7 @@ function clearAdminCookie(res) {
 }
 
 function getAutomaticStatus(performancePercent, aiRiskAverage, aiHighRiskCount) {
-  if (performancePercent < MIN_PERFORMANCE_PERCENT) return "Reprovado";
+  if (performancePercent < getMinPerformance()) return "Reprovado";
   if (aiRiskAverage >= 60 || aiHighRiskCount > 0) return "Em analise";
   return "Aprovado";
 }
@@ -620,7 +688,7 @@ function validateSubmission(body) {
   if (!startedAtRaw || Number.isNaN(startedAtRaw.getTime())) {
     throw new Error("Sessao invalida. Recarregue a pagina.");
   }
-  if (Date.now() - startedAtRaw.getTime() < MIN_FORM_DURATION_MS) {
+  if (Date.now() - startedAtRaw.getTime() < getMinFormDuration()) {
     throw new Error("Envio muito rapido. Releia as questoes antes de enviar.");
   }
   if (!withinExamWindow()) {
@@ -881,7 +949,7 @@ function writeSubmissionPdf(doc, submission) {
   doc.text(`Envio: ${new Date(submission.submittedAt).toLocaleString("pt-BR")}`);
   doc.text(`Status automatico: ${submission.status}`);
   doc.text(`Desempenho: ${submission.objectiveScore}/${submission.objectiveTotal} (${submission.performancePercent}%)`);
-  doc.text(`Nota minima configurada: ${MIN_PERFORMANCE_PERCENT}%`);
+  doc.text(`Nota minima configurada: ${getMinPerformance()}%`);
   doc.text(`Risco medio IA: ${submission.aiRiskAverage}%`);
   doc.text(`Respostas com alerta: ${submission.aiFlaggedCount}`);
   doc.text(`Alto risco: ${submission.aiHighRiskCount}`);
@@ -952,7 +1020,8 @@ function verifySeedSignature(seed, signature) {
   }
 }
 
-app.get("/api/exam", (req, res) => {
+app.get("/api/exam", async (req, res) => {
+  await ensureConfig();
   const seed = crypto.randomBytes(12).toString("hex");
   const exam = buildExamForSession(seed);
   const issuedAt = Date.now();
@@ -960,22 +1029,80 @@ app.get("/api/exam", (req, res) => {
     seed,
     seedSignature: `${issuedAt}.${signSeed(seed, issuedAt)}`,
     serverNow: new Date().toISOString(),
-    examStartAt: EXAM_START_AT,
-    examEndAt: EXAM_END_AT,
+    examStartAt: getExamStart(),
+    examEndAt: getExamEnd(),
     isOpen: withinExamWindow(),
     honeypotField: HONEYPOT_FIELD,
-    minDurationMs: MIN_FORM_DURATION_MS,
+    minDurationMs: getMinFormDuration(),
     ...exam
   });
 });
 
-app.get("/api/config", (req, res) => {
+app.get("/api/config", async (req, res) => {
+  await ensureConfig();
   res.json({
-    examStartAt: EXAM_START_AT,
-    examEndAt: EXAM_END_AT,
+    examStartAt: getExamStart(),
+    examEndAt: getExamEnd(),
     isOpen: withinExamWindow(),
-    minPerformancePercent: MIN_PERFORMANCE_PERCENT
+    minPerformancePercent: getMinPerformance()
   });
+});
+
+app.get("/api/admin/config", requireAdmin, async (req, res) => {
+  await ensureConfig();
+  res.json({
+    examStartAt: getExamStart(),
+    examEndAt: getExamEnd(),
+    minPerformancePercent: getMinPerformance(),
+    minFormDurationMs: getMinFormDuration(),
+    discordAllowedUsers: getAllowedDiscord(),
+    isOpen: withinExamWindow(),
+    serverNow: new Date().toISOString()
+  });
+});
+
+app.patch("/api/admin/config", requireAdmin, async (req, res) => {
+  try {
+    const body = req.body || {};
+    const next = { ...runtimeConfig };
+
+    if (body.examStartAt !== undefined) {
+      const d = new Date(body.examStartAt);
+      if (Number.isNaN(d.getTime())) throw new Error("Data de inicio invalida.");
+      next.examStartAt = d.toISOString();
+    }
+    if (body.examEndAt !== undefined) {
+      const d = new Date(body.examEndAt);
+      if (Number.isNaN(d.getTime())) throw new Error("Data de fim invalida.");
+      next.examEndAt = d.toISOString();
+    }
+    if (next.examStartAt && next.examEndAt && new Date(next.examStartAt) >= new Date(next.examEndAt)) {
+      throw new Error("Fim do edital precisa ser depois do inicio.");
+    }
+    if (body.minPerformancePercent !== undefined) {
+      const v = Number(body.minPerformancePercent);
+      if (!Number.isFinite(v) || v < 0 || v > 100) throw new Error("Nota minima deve estar entre 0 e 100.");
+      next.minPerformancePercent = Math.round(v);
+    }
+    if (body.minFormDurationMs !== undefined) {
+      const v = Number(body.minFormDurationMs);
+      if (!Number.isFinite(v) || v < 0 || v > 86_400_000) throw new Error("Duracao minima invalida.");
+      next.minFormDurationMs = Math.round(v);
+    }
+    if (Array.isArray(body.discordAllowedUsers)) {
+      next.discordAllowedUsers = body.discordAllowedUsers
+        .map((s) => String(s).trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 50);
+    }
+
+    await saveRuntimeConfig(next);
+    logger.info({ event: "config.updated", keys: Object.keys(body) }, "Config atualizada via painel");
+    res.json({ ok: true, config: next });
+  } catch (error) {
+    logger.warn({ err: error.message }, "config.update.failed");
+    res.status(400).json({ error: error.message || "Falha ao salvar configuracao." });
+  }
 });
 
 app.post("/api/admin/magic", requireAdmin, (req, res) => {
@@ -1053,6 +1180,87 @@ function rateLimitLogin(req, res, next) {
   next();
 }
 
+const discordStateStore = new Map();
+
+app.get("/api/admin/discord/start", (req, res) => {
+  if (!DISCORD_CLIENT_ID || !DISCORD_REDIRECT_URI || !DISCORD_CLIENT_SECRET) {
+    res.status(503).json({ error: "Login Discord nao configurado no servidor." });
+    return;
+  }
+  const state = crypto.randomBytes(16).toString("hex");
+  const returnTo = String(req.query?.return_to || ADMIN_PANEL_ORIGIN || PUBLIC_ADMIN_URL || "");
+  discordStateStore.set(state, { createdAt: Date.now(), returnTo });
+  for (const [k, v] of discordStateStore) {
+    if (Date.now() - v.createdAt > 10 * 60 * 1000) discordStateStore.delete(k);
+  }
+  const params = new URLSearchParams({
+    client_id: DISCORD_CLIENT_ID,
+    redirect_uri: DISCORD_REDIRECT_URI,
+    response_type: "code",
+    scope: "identify",
+    state,
+    prompt: "consent"
+  });
+  res.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
+});
+
+app.get("/api/admin/discord/callback", async (req, res) => {
+  const fallbackTarget = ADMIN_PANEL_ORIGIN || PUBLIC_ADMIN_URL || "/";
+  try {
+    const code = String(req.query?.code || "");
+    const state = String(req.query?.state || "");
+    const stored = discordStateStore.get(state);
+    discordStateStore.delete(state);
+    if (!code || !stored) {
+      throw new Error("Sessao OAuth invalida ou expirada.");
+    }
+
+    const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: DISCORD_CLIENT_ID,
+        client_secret: DISCORD_CLIENT_SECRET,
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: DISCORD_REDIRECT_URI
+      })
+    });
+    if (!tokenRes.ok) throw new Error(`Discord token HTTP ${tokenRes.status}`);
+    const tokenData = await tokenRes.json();
+
+    const userRes = await fetch("https://discord.com/api/users/@me", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    if (!userRes.ok) throw new Error(`Discord user HTTP ${userRes.status}`);
+    const user = await userRes.json();
+    const username = String(user.username || "").toLowerCase();
+
+    if (!getAllowedDiscord().includes(username)) {
+      logger.warn({ event: "discord.unauthorized", username }, "Usuario Discord nao autorizado");
+      const target = stored.returnTo || fallbackTarget;
+      res.redirect(`${target.replace(/\/$/, "")}/?discord=unauthorized&user=${encodeURIComponent(user.username || "?")}`);
+      return;
+    }
+
+    setAdminCookie(res);
+    const adminToken = createAdminSession();
+    const target = stored.returnTo || fallbackTarget;
+    logger.info({ event: "discord.login", username }, "Login Discord OK");
+    res.redirect(`${target.replace(/\/$/, "")}/?discord=ok&token=${encodeURIComponent(adminToken)}&user=${encodeURIComponent(user.username || "")}`);
+  } catch (error) {
+    logger.warn({ err: error.message }, "Discord login failed");
+    res.redirect(`${fallbackTarget.replace(/\/$/, "")}/?discord=error&reason=${encodeURIComponent(error.message)}`);
+  }
+});
+
+app.get("/api/admin/discord/status", (req, res) => {
+  res.json({
+    configured: Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && DISCORD_REDIRECT_URI),
+    allowedCount: getAllowedDiscord().length
+  });
+});
+
 app.post("/api/admin/login", rateLimitLogin, (req, res) => {
   const provided = String(req.body?.password || "");
   const a = Buffer.from(provided);
@@ -1103,6 +1311,7 @@ function rateLimitSubmissions(req, res, next) {
 
 app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
   try {
+    await ensureConfig();
     const valid = validateSubmission(req.body);
     const duplicate = await findDuplicateSubmission(valid.identity);
     if (duplicate) {
@@ -1303,9 +1512,25 @@ app.delete("/api/admin/submissions", requireAdmin, async (req, res) => {
   }
 });
 
+// Carrega configuracao mutavel (datas do edital etc).
+// Em serverless cada invocacao re-importa o modulo; refreshamos a cada 60s
+// para que mudancas feitas no painel apareçam em outras instancias.
+const configBootPromise = loadRuntimeConfig().catch((e) => {
+  logger.warn({ err: e.message }, "config.boot.failed");
+});
+let lastConfigRefresh = Date.now();
+async function ensureConfig() {
+  if (Date.now() - lastConfigRefresh > 60_000) {
+    lastConfigRefresh = Date.now();
+    await loadRuntimeConfig().catch(() => {});
+  }
+  return configBootPromise;
+}
+
 const isMainModule = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, "/")}` || import.meta.url.endsWith(path.basename(process.argv[1] || ""));
 if (isMainModule && process.env.VERCEL !== "1" && process.env.NODE_ENV !== "test") {
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
+    await configBootPromise;
     logger.info({ port: PORT, database: supabase ? "supabase" : "local-json" }, "Edital Defensoria online");
   });
 }
