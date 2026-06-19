@@ -7,6 +7,57 @@ let examEndAt = "";
 
 const DRAFT_KEY = "dge_draft_v1";
 const SUBMITTED_KEY = "dge_submitted_v1";
+const CLIENT_ID_KEY = "dge_client_id";
+
+function getClientId() {
+  let id = localStorage.getItem(CLIENT_ID_KEY);
+  if (!id) {
+    id = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    localStorage.setItem(CLIENT_ID_KEY, id);
+  }
+  return id;
+}
+const clientId = getClientId();
+
+// ---- Sinais antifraude ----
+let devtoolsOpened = false;
+let reviewCount = 0;          // quantas vezes abriu o modal de confirmacao e voltou
+let lastActivityAt = Date.now();
+let maxIdleMs = 0;
+
+function computeFingerprint() {
+  const parts = [
+    navigator.userAgent,
+    navigator.language,
+    navigator.platform,
+    `${screen.width}x${screen.height}x${screen.colorDepth}`,
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    String(navigator.hardwareConcurrency || ""),
+    String(navigator.maxTouchPoints || "")
+  ].join("|");
+  let hash = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    hash = (Math.imul(31, hash) + parts.charCodeAt(i)) | 0;
+  }
+  return `fp_${(hash >>> 0).toString(16)}`;
+}
+const fingerprint = computeFingerprint();
+
+function markActivity() {
+  const now = Date.now();
+  const idle = now - lastActivityAt;
+  if (idle > maxIdleMs) maxIdleMs = idle;
+  lastActivityAt = now;
+}
+
+function startDevtoolsWatch() {
+  const threshold = 170;
+  setInterval(() => {
+    const widthGap = window.outerWidth - window.innerWidth;
+    const heightGap = window.outerHeight - window.innerHeight;
+    if (widthGap > threshold || heightGap > threshold) devtoolsOpened = true;
+  }, 2000);
+}
 
 const form = document.querySelector("#examForm");
 const objectiveMount = document.querySelector("#objectiveQuestions");
@@ -79,6 +130,9 @@ function autoSave() {
   }, 900);
 }
 
+let warned5min = false;
+let examClosedLocally = false;
+
 function tickClock() {
   if (!timeElapsed) return;
   const seconds = Math.floor((Date.now() - startedAt) / 1000);
@@ -92,6 +146,17 @@ function tickClock() {
     const mins = String(Math.floor((remaining / 60000) % 60)).padStart(2, "0");
     const secs = String(Math.floor((remaining / 1000) % 60)).padStart(2, "0");
     countdown = ` | Encerra em ${dd}d ${hh}:${mins}:${secs}`;
+
+    if (remaining > 0 && remaining <= 5 * 60 * 1000 && !warned5min) {
+      warned5min = true;
+      toast("Faltam 5 minutos para o fim do edital. Finalize seu envio!", "warn", "Atencao");
+    }
+    if (remaining <= 0 && !examClosedLocally) {
+      examClosedLocally = true;
+      const submit = form?.querySelector('button[type="submit"]');
+      if (submit) submit.disabled = true;
+      toast("O periodo do edital terminou.", "error", "Encerrado");
+    }
   }
   timeElapsed.textContent = `Tempo: ${mm}:${ss}${countdown}`;
 }
@@ -206,16 +271,62 @@ function collectFormData() {
     seed: examSeed,
     seedSignature: examSeedSignature,
     formStartedAt,
-    middlename: String(data.get("middlename") || "")
+    middlename: String(data.get("middlename") || ""),
+    clientId,
+    fingerprint,
+    devtoolsOpened,
+    reviewCount,
+    maxIdleMs
   };
 }
 
-function saveDraft() {
+function collectDraftObject() {
   const data = new FormData(form);
   const draft = {};
   for (const [key, value] of data.entries()) draft[key] = value;
+  return draft;
+}
+
+function saveDraft() {
+  const draft = collectDraftObject();
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   draftStatus.textContent = `Rascunho salvo as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`;
+  // Sincroniza com o servidor (best-effort, nao bloqueia).
+  fetch("/api/draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId, data: draft })
+  }).catch(() => {});
+}
+
+function applyDraftObject(draft) {
+  for (const [key, value] of Object.entries(draft || {})) {
+    const fields = form.elements[key];
+    if (!fields) continue;
+    if (fields instanceof RadioNodeList) {
+      const option = [...fields].find((item) => item.value === String(value));
+      if (option) option.checked = true;
+    } else {
+      fields.value = value;
+    }
+  }
+}
+
+async function loadServerDraftIfNewer() {
+  // Se nao ha rascunho local, tenta recuperar do servidor (outro dispositivo).
+  if (localStorage.getItem(DRAFT_KEY)) return;
+  try {
+    const res = await fetch(`/api/draft/${encodeURIComponent(clientId)}`);
+    const body = await res.json().catch(() => ({}));
+    if (body?.data && Object.keys(body.data).length) {
+      applyDraftObject(body.data);
+      updateCounters();
+      updateProgress();
+      toast("Rascunho recuperado do servidor.", "success");
+    }
+  } catch {
+    // sem rascunho remoto
+  }
 }
 
 function clearDraft() {
@@ -335,6 +446,27 @@ function openConfirmModal() {
       <span>${row.label}</span><strong>${row.done}/${row.total}</strong>
     </li>
   `).join("");
+
+  const reviewMount = document.querySelector("#confirmModalReview");
+  if (reviewMount) {
+    const data = new FormData(form);
+    const objRows = objectiveQuestions.map((q, i) => {
+      const sel = form.querySelector(`[name="q${q.id}"]:checked`);
+      const label = sel ? sel.closest(".option-row")?.querySelector("span")?.textContent?.trim() : null;
+      return `<div class="review-item ${sel ? "" : "missing"}">
+        <strong>${i + 1}.</strong> ${escapeHtml(q.text)}<br>
+        <span>${sel ? escapeHtml(label || "Respondida") : "Nao respondida"}</span>
+      </div>`;
+    }).join("");
+    const subjRows = subjectiveQuestions.map((q, i) => {
+      const val = String(data.get(`q${q.id}`) || "").trim();
+      return `<div class="review-item ${val && countWords(val) >= 5 ? "" : "missing"}">
+        <strong>${objectiveQuestions.length + i + 1}.</strong> ${escapeHtml(q.text)}<br>
+        <span>${val ? escapeHtml(val.slice(0, 160)) + (val.length > 160 ? "..." : "") : "Nao respondida"}</span>
+      </div>`;
+    }).join("");
+    reviewMount.innerHTML = objRows + subjRows;
+  }
   confirmModal.classList.remove("hidden");
 }
 
@@ -419,6 +551,7 @@ async function submitForm() {
 
 function bindEvents() {
   form.addEventListener("input", () => {
+    markActivity();
     updateCounters();
     updateProgress();
     dirtyDraft = true;
@@ -426,6 +559,7 @@ function bindEvents() {
   });
 
   form.addEventListener("change", () => {
+    markActivity();
     updateProgress();
     dirtyDraft = true;
     autoSave();
@@ -436,7 +570,10 @@ function bindEvents() {
     openConfirmModal();
   });
 
-  document.querySelector("#cancelConfirm").addEventListener("click", closeConfirmModal);
+  document.querySelector("#cancelConfirm").addEventListener("click", () => {
+    reviewCount += 1;
+    closeConfirmModal();
+  });
   document.querySelector("#okConfirm").addEventListener("click", () => {
     closeConfirmModal();
     submitForm();
@@ -551,14 +688,30 @@ async function boot() {
   }
   renderQuestions();
   loadDraft();
+  await loadServerDraftIfNewer();
   bindEvents();
   updateCounters();
   updateProgress();
   tickClock();
   setInterval(tickClock, 1000);
-  if (localStorage.getItem(SUBMITTED_KEY)) {
+
+  const alreadySubmitted = Boolean(localStorage.getItem(SUBMITTED_KEY));
+  if (alreadySubmitted) {
     toast("Voce ja enviou esta avaliacao.", "info");
     form.querySelectorAll("input, textarea, button[type='submit']").forEach((el) => { el.disabled = true; });
+  } else {
+    startDevtoolsWatch();
+    // Heartbeat de presenca (candidato preenchendo agora).
+    const heartbeat = () => {
+      if (localStorage.getItem(SUBMITTED_KEY)) return;
+      fetch("/api/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId })
+      }).catch(() => {});
+    };
+    heartbeat();
+    setInterval(heartbeat, 20000);
   }
 }
 

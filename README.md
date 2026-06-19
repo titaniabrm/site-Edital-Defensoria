@@ -26,11 +26,41 @@ DISCORD_WEBHOOK_URL=
 PUBLIC_ADMIN_URL=https://edital-painel.vercel.app
 ADMIN_PANEL_ORIGIN=https://edital-painel.vercel.app
 IP_HASH_SALT=troque-este-salt
+
+# Login Discord no painel (OAuth)
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_REDIRECT_URI=
+DISCORD_ALLOWED_USERS=mudinhoxy,titaniabrjv,yoursalf_.7
+
+# 2FA opcional por cargo no Discord (exige o cargo no servidor indicado)
+DISCORD_GUILD_ID=
+DISCORD_REQUIRED_ROLE_ID=
+
+# Backup automatico (Vercel Cron envia Authorization: Bearer CRON_SECRET)
+CRON_SECRET=
 ```
 
 `ADMIN_PANEL_ORIGIN` autoriza CORS para o projeto separado do painel.
 Use `*` apenas em desenvolvimento. `PUBLIC_ADMIN_URL` faz a rota `/admin`
 redirecionar para o painel externo.
+
+### Recursos adicionais
+
+- **Login Discord + 2FA por cargo**: se `DISCORD_GUILD_ID` e
+  `DISCORD_REQUIRED_ROLE_ID` estiverem definidos, o login exige que o usuario
+  tenha o cargo no servidor (alem de estar na allowlist).
+- **Log de auditoria**: toda acao admin (login, status, config, revisor,
+  limpeza, backup) e gravada na tabela `defensoria_audit` (ou `data/audit.json`).
+- **Rascunho no servidor**: o formulario sincroniza o rascunho via
+  `POST /api/draft` para recuperar de outro dispositivo.
+- **Presenca em tempo real**: candidatos enviam heartbeat (`POST /api/presence`)
+  e o painel mostra quantos estao preenchendo agora.
+- **Backup diario**: `vercel.json` agenda `GET /api/cron/backup` (06:00 UTC);
+  com `DISCORD_WEBHOOK_URL` o snapshot vai como anexo no canal.
+- **Antifraude extra**: deteccao de DevTools, fingerprint do navegador,
+  contagem de revisoes e maior inatividade sao salvos e exibidos no painel.
+- **Healthcheck real**: `GET /api/health` testa Supabase e Groq de verdade.
 
 As datas `EXAM_START_AT` / `EXAM_END_AT` estao em **UTC**. O padrao acima cobre
 `19/06/2026 12:00` ate `21/06/2026 20:00` no fuso `America/Sao_Paulo` (UTC-3).

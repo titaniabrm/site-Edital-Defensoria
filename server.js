@@ -38,9 +38,15 @@ const DISCORD_ALLOWED_USERS = (process.env.DISCORD_ALLOWED_USERS || "mudinhoxy,t
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
+// Opcional: exige que o usuario Discord tenha um cargo num servidor especifico.
+const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID || "";
+const DISCORD_REQUIRED_ROLE_ID = process.env.DISCORD_REQUIRED_ROLE_ID || "";
+const CRON_SECRET = process.env.CRON_SECRET || "";
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "submissions.json");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
+const AUDIT_FILE = path.join(DATA_DIR, "audit.json");
+const DRAFTS_FILE = path.join(DATA_DIR, "drafts.json");
 const IP_HASH_SALT = process.env.IP_HASH_SALT || ADMIN_SESSION_SECRET;
 
 if (ADMIN_PIN === "DGE-2026") {
@@ -316,6 +322,18 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  res.setHeader("Content-Security-Policy", [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self' https://discord.com",
+    "frame-ancestors 'none'",
+    "object-src 'none'"
+  ].join("; "));
   next();
 });
 
@@ -673,7 +691,13 @@ export {
   jaccard,
   shingles,
   withinExamWindow,
-  buildExamForSession
+  buildExamForSession,
+  signSeed,
+  verifySeedSignature,
+  isValidAdminSession,
+  createAdminSession,
+  hashIdentifier,
+  validateSubmission
 };
 
 function validateSubmission(body) {
@@ -737,7 +761,11 @@ function validateSubmission(body) {
       timeSpentMs: Math.max(0, Number(item.timeSpentMs) || 0)
     })),
     seed,
-    startedAt: startedAtRaw.toISOString()
+    startedAt: startedAtRaw.toISOString(),
+    fingerprint: body?.fingerprint ? String(body.fingerprint).slice(0, 200) : null,
+    devtoolsOpened: Boolean(body?.devtoolsOpened),
+    reviewCount: Math.max(0, Math.min(999, Number(body?.reviewCount) || 0)),
+    maxIdleMs: Math.max(0, Number(body?.maxIdleMs) || 0)
   };
 }
 
@@ -756,6 +784,128 @@ async function readLocalSubmissions() {
 async function writeLocalSubmissions(submissions) {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(DATA_FILE, JSON.stringify(submissions, null, 2), "utf8");
+}
+
+function clientIp(req) {
+  return (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown")
+    .toString().split(",")[0].trim();
+}
+
+// ---- Log de auditoria (best-effort, nunca lanca para nao quebrar a acao principal) ----
+async function recordAudit(action, actor, target, meta, req) {
+  const entry = {
+    id: crypto.randomUUID(),
+    at: new Date().toISOString(),
+    action: String(action || "").slice(0, 60),
+    actor: String(actor || "?").slice(0, 80),
+    target: target ? String(target).slice(0, 80) : null,
+    meta: meta || null,
+    ip_hash: req ? hashIdentifier(clientIp(req)) : null
+  };
+  try {
+    if (supabase) {
+      await supabase.from("defensoria_audit").insert(entry);
+    } else {
+      let list = [];
+      try { list = JSON.parse(await fs.readFile(AUDIT_FILE, "utf8")); } catch { list = []; }
+      list.push(entry);
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      await fs.writeFile(AUDIT_FILE, JSON.stringify(list.slice(-2000), null, 2), "utf8");
+    }
+  } catch (error) {
+    logger.warn({ err: error.message }, "audit.record.failed");
+  }
+}
+
+async function listAudit(limit = 200) {
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("defensoria_audit")
+      .select("*")
+      .order("at", { ascending: false })
+      .limit(limit);
+    if (error) throw normalizeDatabaseError(error);
+    return data;
+  }
+  let list = [];
+  try { list = JSON.parse(await fs.readFile(AUDIT_FILE, "utf8")); } catch { list = []; }
+  return list.slice(-limit).reverse();
+}
+
+// ---- Presenca (candidatos preenchendo agora) ----
+const localPresence = new Map(); // clientId -> lastSeenMs
+const PRESENCE_WINDOW_MS = 45_000;
+
+async function touchPresence(clientId) {
+  const id = String(clientId || "").slice(0, 64);
+  if (!id) return;
+  if (supabase) {
+    try {
+      await supabase.from("defensoria_presence").upsert({ client_id: id, last_seen: new Date().toISOString() });
+    } catch (error) {
+      logger.warn({ err: error.message }, "presence.touch.failed");
+    }
+    return;
+  }
+  localPresence.set(id, Date.now());
+}
+
+async function countActivePresence() {
+  const cutoffIso = new Date(Date.now() - PRESENCE_WINDOW_MS).toISOString();
+  if (supabase) {
+    try {
+      const { count, error } = await supabase
+        .from("defensoria_presence")
+        .select("client_id", { count: "exact", head: true })
+        .gte("last_seen", cutoffIso);
+      if (error) throw error;
+      return count || 0;
+    } catch (error) {
+      logger.warn({ err: error.message }, "presence.count.failed");
+      return 0;
+    }
+  }
+  const cutoff = Date.now() - PRESENCE_WINDOW_MS;
+  let n = 0;
+  for (const [id, ts] of localPresence) {
+    if (ts >= cutoff) n += 1; else localPresence.delete(id);
+  }
+  return n;
+}
+
+// ---- Rascunho no servidor (sincroniza entre dispositivos) ----
+async function saveServerDraft(clientId, data) {
+  const id = String(clientId || "").slice(0, 64);
+  if (!id) throw new Error("Sessao invalida.");
+  const payload = { client_id: id, data, updated_at: new Date().toISOString() };
+  if (supabase) {
+    const { error } = await supabase.from("defensoria_drafts").upsert(payload);
+    if (error) throw normalizeDatabaseError(error);
+    return;
+  }
+  let map = {};
+  try { map = JSON.parse(await fs.readFile(DRAFTS_FILE, "utf8")); } catch { map = {}; }
+  map[id] = payload;
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(DRAFTS_FILE, JSON.stringify(map, null, 2), "utf8");
+}
+
+async function getServerDraft(clientId) {
+  const id = String(clientId || "").slice(0, 64);
+  if (!id) return null;
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("defensoria_drafts")
+      .select("data, updated_at")
+      .eq("client_id", id)
+      .maybeSingle();
+    if (error) return null;
+    return data ? { data: data.data, updatedAt: data.updated_at } : null;
+  }
+  let map = {};
+  try { map = JSON.parse(await fs.readFile(DRAFTS_FILE, "utf8")); } catch { map = {}; }
+  const entry = map[id];
+  return entry ? { data: entry.data, updatedAt: entry.updated_at } : null;
 }
 
 function toDbRow(submission) {
@@ -783,7 +933,12 @@ function toDbRow(submission) {
     tags: submission.tags || [],
     ip_hash: submission.ipHash || null,
     ua_hash: submission.uaHash || null,
-    paste_count: submission.pasteCount || 0
+    paste_count: submission.pasteCount || 0,
+    reviewer: submission.reviewer || null,
+    fingerprint: submission.fingerprint || null,
+    devtools_opened: Boolean(submission.devtoolsOpened),
+    review_count: submission.reviewCount || 0,
+    max_idle_ms: submission.maxIdleMs || 0
   };
 }
 
@@ -811,7 +966,12 @@ function fromDbRow(row) {
     tags: row.tags || [],
     ipHash: row.ip_hash || null,
     uaHash: row.ua_hash || null,
-    pasteCount: row.paste_count || 0
+    pasteCount: row.paste_count || 0,
+    reviewer: row.reviewer || null,
+    fingerprint: row.fingerprint || null,
+    devtoolsOpened: Boolean(row.devtools_opened),
+    reviewCount: row.review_count || 0,
+    maxIdleMs: row.max_idle_ms || 0
   };
 }
 
@@ -903,6 +1063,24 @@ async function updateAdminNote(id, adminNote, tags) {
   submissions[index].adminNote = adminNote;
   if (safeTags) submissions[index].tags = safeTags;
   await writeLocalSubmissions(submissions);
+}
+
+async function updateReviewer(id, reviewer) {
+  const value = String(reviewer || "").trim().slice(0, 80) || null;
+  if (supabase) {
+    const { error } = await supabase
+      .from("defensoria_submissions")
+      .update({ reviewer: value })
+      .eq("id", id);
+    if (error) throw normalizeDatabaseError(error);
+    return value;
+  }
+  const submissions = await readLocalSubmissions();
+  const index = submissions.findIndex((submission) => submission.id === id);
+  if (index === -1) throw new Error("Candidato nao encontrado.");
+  submissions[index].reviewer = value;
+  await writeLocalSubmissions(submissions);
+  return value;
 }
 
 async function listSubmissions() {
@@ -1098,6 +1276,7 @@ app.patch("/api/admin/config", requireAdmin, async (req, res) => {
 
     await saveRuntimeConfig(next);
     logger.info({ event: "config.updated", keys: Object.keys(body) }, "Config atualizada via painel");
+    recordAudit("config.update", "admin", null, { keys: Object.keys(body) }, req);
     res.json({ ok: true, config: next });
   } catch (error) {
     logger.warn({ err: error.message }, "config.update.failed");
@@ -1149,12 +1328,49 @@ app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    database: supabase ? "supabase" : "local-json",
-    groqConfigured: Boolean(process.env.GROQ_API_KEY),
-    model: GROQ_MODEL
+async function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))
+  ]);
+}
+
+app.get("/api/health", async (req, res) => {
+  const checks = { database: "local-json", databaseOk: true, groq: "nao configurado", groqOk: null };
+
+  if (supabase) {
+    checks.database = "supabase";
+    try {
+      await withTimeout(
+        supabase.from("defensoria_config").select("id", { head: true, count: "exact" }).eq("id", 1),
+        4000
+      );
+      checks.databaseOk = true;
+    } catch {
+      checks.databaseOk = false;
+    }
+  }
+
+  if (process.env.GROQ_API_KEY) {
+    try {
+      const r = await withTimeout(fetch("https://api.groq.com/openai/v1/models", {
+        headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }
+      }), 4000);
+      checks.groqOk = r.ok;
+      checks.groq = r.ok ? "ok" : `http ${r.status}`;
+    } catch {
+      checks.groqOk = false;
+      checks.groq = "falha";
+    }
+  }
+
+  const ok = checks.databaseOk && checks.groqOk !== false;
+  res.status(ok ? 200 : 503).json({
+    ok,
+    ...checks,
+    model: GROQ_MODEL,
+    discordLogin: Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET),
+    examOpen: withinExamWindow()
   });
 });
 
@@ -1193,11 +1409,14 @@ app.get("/api/admin/discord/start", (req, res) => {
   for (const [k, v] of discordStateStore) {
     if (Date.now() - v.createdAt > 10 * 60 * 1000) discordStateStore.delete(k);
   }
+  const scope = DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID
+    ? "identify guilds.members.read"
+    : "identify";
   const params = new URLSearchParams({
     client_id: DISCORD_CLIENT_ID,
     redirect_uri: DISCORD_REDIRECT_URI,
     response_type: "code",
-    scope: "identify",
+    scope,
     state,
     prompt: "consent"
   });
@@ -1235,18 +1454,39 @@ app.get("/api/admin/discord/callback", async (req, res) => {
     if (!userRes.ok) throw new Error(`Discord user HTTP ${userRes.status}`);
     const user = await userRes.json();
     const username = String(user.username || "").toLowerCase();
+    const target = stored.returnTo || fallbackTarget;
 
-    if (!getAllowedDiscord().includes(username)) {
-      logger.warn({ event: "discord.unauthorized", username }, "Usuario Discord nao autorizado");
-      const target = stored.returnTo || fallbackTarget;
+    const inAllowlist = getAllowedDiscord().includes(username);
+
+    // 2FA por cargo: se guild + role configurados, exige o cargo no servidor.
+    let roleOk = true;
+    if (DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID) {
+      roleOk = false;
+      try {
+        const memberRes = await fetch(
+          `https://discord.com/api/users/@me/guilds/${DISCORD_GUILD_ID}/member`,
+          { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
+        );
+        if (memberRes.ok) {
+          const member = await memberRes.json();
+          roleOk = Array.isArray(member.roles) && member.roles.includes(DISCORD_REQUIRED_ROLE_ID);
+        }
+      } catch (error) {
+        logger.warn({ err: error.message }, "discord.member.check.failed");
+      }
+    }
+
+    if (!inAllowlist || !roleOk) {
+      logger.warn({ event: "discord.unauthorized", username, inAllowlist, roleOk }, "Usuario Discord nao autorizado");
+      recordAudit("discord.login.denied", username, null, { inAllowlist, roleOk }, req);
       res.redirect(`${target.replace(/\/$/, "")}/?discord=unauthorized&user=${encodeURIComponent(user.username || "?")}`);
       return;
     }
 
     setAdminCookie(res);
     const adminToken = createAdminSession();
-    const target = stored.returnTo || fallbackTarget;
     logger.info({ event: "discord.login", username }, "Login Discord OK");
+    recordAudit("discord.login", username, null, null, req);
     res.redirect(`${target.replace(/\/$/, "")}/?discord=ok&token=${encodeURIComponent(adminToken)}&user=${encodeURIComponent(user.username || "")}`);
   } catch (error) {
     logger.warn({ err: error.message }, "Discord login failed");
@@ -1257,7 +1497,8 @@ app.get("/api/admin/discord/callback", async (req, res) => {
 app.get("/api/admin/discord/status", (req, res) => {
   res.json({
     configured: Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && DISCORD_REDIRECT_URI),
-    allowedCount: getAllowedDiscord().length
+    allowedCount: getAllowedDiscord().length,
+    roleCheck: Boolean(DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID)
   });
 });
 
@@ -1272,12 +1513,20 @@ app.post("/api/admin/login", rateLimitLogin, (req, res) => {
   }
   setAdminCookie(res);
   const token = createAdminSession();
+  recordAudit("login.pin", "admin", null, null, req);
   res.json({ ok: true, token });
 });
 
 app.post("/api/admin/logout", (req, res) => {
   clearAdminCookie(res);
   res.json({ ok: true });
+});
+
+// Renova a sessao admin se a atual ainda for valida (refresh silencioso).
+app.post("/api/admin/refresh", requireAdmin, (req, res) => {
+  setAdminCookie(res);
+  const token = createAdminSession();
+  res.json({ ok: true, token });
 });
 
 app.get("/api/admin/session", (req, res) => {
@@ -1370,7 +1619,12 @@ app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
       tags: [],
       ipHash: hashIdentifier(ip),
       uaHash: hashIdentifier(ua),
-      pasteCount
+      pasteCount,
+      reviewer: null,
+      fingerprint: valid.fingerprint,
+      devtoolsOpened: valid.devtoolsOpened,
+      reviewCount: valid.reviewCount,
+      maxIdleMs: valid.maxIdleMs
     };
 
     await saveSubmission(submission);
@@ -1434,6 +1688,7 @@ app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) =>
     const note = String(req.body?.note || "");
     const entry = await updateSubmissionStatus(req.params.id, status, note, "admin");
     logger.info({ event: "submission.status", id: req.params.id, status }, "status atualizado");
+    recordAudit("submission.status", "admin", req.params.id, { status }, req);
     res.json({ ok: true, status, entry });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao atualizar status." });
@@ -1495,6 +1750,84 @@ app.get("/api/admin/submissions/:id/report.pdf", requireAdmin, async (req, res) 
   }
 });
 
+app.patch("/api/admin/submissions/:id/reviewer", requireAdmin, async (req, res) => {
+  try {
+    const reviewer = await updateReviewer(req.params.id, req.body?.reviewer);
+    recordAudit("submission.reviewer", "admin", req.params.id, { reviewer }, req);
+    res.json({ ok: true, reviewer });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao atribuir revisor." });
+  }
+});
+
+app.get("/api/admin/audit", requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(500, Math.max(1, Number(req.query?.limit) || 200));
+    res.json(await listAudit(limit));
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao listar auditoria." });
+  }
+});
+
+app.get("/api/admin/active", requireAdmin, async (req, res) => {
+  res.json({ active: await countActivePresence(), windowMs: PRESENCE_WINDOW_MS });
+});
+
+// Heartbeat publico de presenca (candidato preenchendo).
+app.post("/api/presence", async (req, res) => {
+  await touchPresence(req.body?.clientId);
+  res.json({ ok: true });
+});
+
+// Rascunho no servidor (sincroniza entre dispositivos).
+app.post("/api/draft", async (req, res) => {
+  try {
+    const clientId = String(req.body?.clientId || "");
+    const data = req.body?.data;
+    if (!clientId || typeof data !== "object") throw new Error("Dados invalidos.");
+    if (JSON.stringify(data).length > 200_000) throw new Error("Rascunho muito grande.");
+    await saveServerDraft(clientId, data);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Falha ao salvar rascunho." });
+  }
+});
+
+app.get("/api/draft/:clientId", async (req, res) => {
+  try {
+    const draft = await getServerDraft(req.params.clientId);
+    res.json(draft || {});
+  } catch {
+    res.json({});
+  }
+});
+
+// Backup acionado por cron (Vercel Cron envia Authorization: Bearer CRON_SECRET).
+app.get("/api/cron/backup", async (req, res) => {
+  if (!CRON_SECRET || extractBearer(req) !== CRON_SECRET) {
+    res.status(401).json({ error: "Nao autorizado." });
+    return;
+  }
+  try {
+    const submissions = await listSubmissions();
+    const snapshot = JSON.stringify({ at: new Date().toISOString(), count: submissions.length, submissions });
+    if (DISCORD_WEBHOOK_URL) {
+      const form = new FormData();
+      form.append("payload_json", JSON.stringify({ content: `Backup automatico: ${submissions.length} envios.` }));
+      form.append("files[0]", new Blob([snapshot], { type: "application/json" }), `backup-${Date.now()}.json`);
+      await fetch(DISCORD_WEBHOOK_URL, { method: "POST", body: form }).catch(() => {});
+    } else if (!supabase) {
+      await fs.mkdir(DATA_DIR, { recursive: true });
+      await fs.writeFile(path.join(DATA_DIR, `backup-${Date.now()}.json`), snapshot, "utf8");
+    }
+    recordAudit("backup.run", "cron", null, { count: submissions.length }, req);
+    res.json({ ok: true, count: submissions.length });
+  } catch (error) {
+    logger.error({ err: error.message }, "backup.failed");
+    res.status(500).json({ error: "Falha no backup." });
+  }
+});
+
 app.delete("/api/admin/submissions", requireAdmin, async (req, res) => {
   try {
     if (supabase) {
@@ -1506,6 +1839,7 @@ app.delete("/api/admin/submissions", requireAdmin, async (req, res) => {
     } else {
       await writeLocalSubmissions([]);
     }
+    recordAudit("submissions.clear", "admin", null, null, req);
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao limpar envios." });

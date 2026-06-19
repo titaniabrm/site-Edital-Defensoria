@@ -24,5 +24,8 @@
     { "src": "/sw.js", "dest": "/server.js" },
     { "src": "/assets/(.*)", "dest": "/server.js" },
     { "src": "/(.*)", "dest": "/server.js" }
+  ],
+  "crons": [
+    { "path": "/api/cron/backup", "schedule": "0 6 * * *" }
   ]
 }
