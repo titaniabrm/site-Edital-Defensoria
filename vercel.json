@@ -11,7 +11,8 @@
           "app.js",
           "manifest.json",
           "sw.js",
-          "assets/**"
+          "assets/**",
+          "admin/**"
         ],
         "maxDuration": 30
       }
@@ -23,6 +24,7 @@
     { "src": "/manifest.json", "dest": "/server.js" },
     { "src": "/sw.js", "dest": "/server.js" },
     { "src": "/assets/(.*)", "dest": "/server.js" },
+    { "src": "/admin/(.*)", "dest": "/server.js" },
     { "src": "/(.*)", "dest": "/server.js" }
   ],
   "crons": [

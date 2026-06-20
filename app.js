@@ -19,6 +19,75 @@ function getClientId() {
 }
 const clientId = getClientId();
 
+// ---- Sessao Discord (login obrigatorio para fazer a prova) ----
+let currentSession = { authenticated: false, isAdmin: false, username: null };
+
+function goToDiscordLogin() {
+  window.location.href = `/api/admin/discord/start?return_to=${encodeURIComponent("/")}`;
+}
+
+function applySessionUI() {
+  const candidateSections = document.querySelectorAll(".candidate-only");
+  const loginGate = document.querySelector("#loginGate");
+  const discordLoginButton = document.querySelector("#discordLoginButton");
+  const logoutButton = document.querySelector("#logoutButton");
+  const painelButton = document.querySelector("#painelButton");
+  const sessionLabel = document.querySelector("#sessionLabel");
+  const loggedDiscordLabel = document.querySelector("#loggedDiscordLabel");
+
+  if (currentSession.authenticated) {
+    loginGate?.classList.add("hidden");
+    candidateSections.forEach((el) => el.classList.remove("hidden"));
+    discordLoginButton?.classList.add("hidden");
+    logoutButton?.classList.remove("hidden");
+    sessionLabel?.classList.remove("hidden");
+    if (sessionLabel) sessionLabel.textContent = `Logado como @${currentSession.username}`;
+    if (loggedDiscordLabel) loggedDiscordLabel.textContent = `@${currentSession.username}`;
+    painelButton?.classList.toggle("hidden", !currentSession.isAdmin);
+  } else {
+    loginGate?.classList.remove("hidden");
+    candidateSections.forEach((el) => el.classList.add("hidden"));
+    discordLoginButton?.classList.remove("hidden");
+    logoutButton?.classList.add("hidden");
+    sessionLabel?.classList.add("hidden");
+    painelButton?.classList.add("hidden");
+  }
+}
+
+async function checkSession() {
+  try {
+    const res = await fetch("/api/session", { credentials: "same-origin" });
+    currentSession = await res.json();
+  } catch {
+    currentSession = { authenticated: false };
+  }
+  applySessionUI();
+}
+
+function handleLoginCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const result = params.get("login");
+  if (!result) return;
+  if (result === "ok") {
+    toast(`Bem-vindo, @${params.get("user") || ""}!`, "success", "Login Discord");
+  } else if (result === "error") {
+    toast(params.get("reason") || "Falha no login Discord.", "error");
+  }
+  window.history.replaceState({}, "", window.location.pathname);
+}
+
+function bindSessionEvents() {
+  document.querySelector("#discordLoginButton")?.addEventListener("click", goToDiscordLogin);
+  document.querySelector("#loginGateButton")?.addEventListener("click", goToDiscordLogin);
+  document.querySelector("#painelButton")?.addEventListener("click", () => {
+    window.location.href = "/admin";
+  });
+  document.querySelector("#logoutButton")?.addEventListener("click", async () => {
+    await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+    window.location.reload();
+  });
+}
+
 // ---- Sinais antifraude ----
 let devtoolsOpened = false;
 let reviewCount = 0;          // quantas vezes abriu o modal de confirmacao e voltou
@@ -242,7 +311,6 @@ function renderQuestions() {
 function collectFormData() {
   const data = new FormData(form);
   const identity = {
-    discord: String(data.get("discord") || "").trim(),
     roblox: String(data.get("roblox") || "").trim(),
     tempoEb: String(data.get("tempoEb") || "").trim()
   };
@@ -381,7 +449,7 @@ function updateProgress() {
   progressMetric.textContent = `${percent}%`;
   progressBar.style.width = `${percent}%`;
 
-  const identityFields = ["discord", "roblox", "tempoEb"];
+  const identityFields = ["roblox", "tempoEb"];
   const identityDone = identityFields.filter((name) => String(form.elements[name]?.value || "").trim()).length;
   const objectiveDone = objectiveQuestions.filter((q) => form.querySelector(`[name="q${q.id}"]:checked`)).length;
   const subjectiveDone = subjectiveQuestions.filter((q) => {
@@ -389,7 +457,7 @@ function updateProgress() {
     return value.trim() && countWords(value) >= 5;
   }).length;
 
-  const counts = { identidade: [identityDone, 3], objetivas: [objectiveDone, 15], subjetivas: [subjectiveDone, 15] };
+  const counts = { identidade: [identityDone, 2], objetivas: [objectiveDone, 15], subjetivas: [subjectiveDone, 15] };
   sectionProgress?.querySelectorAll("li").forEach((li) => {
     const [done, total] = counts[li.dataset.section];
     li.querySelector("strong").textContent = `${done}/${total}`;
@@ -429,7 +497,7 @@ function jumpToNextPending() {
 }
 
 function openConfirmModal() {
-  const identity = ["discord", "roblox", "tempoEb"].filter((name) => String(form.elements[name]?.value || "").trim()).length;
+  const identity = ["roblox", "tempoEb"].filter((name) => String(form.elements[name]?.value || "").trim()).length;
   const objectiveDone = objectiveQuestions.filter((q) => form.querySelector(`[name="q${q.id}"]:checked`)).length;
   const subjectiveDone = subjectiveQuestions.filter((q) => {
     const value = form.elements[`q${q.id}`]?.value || "";
@@ -437,7 +505,7 @@ function openConfirmModal() {
   }).length;
 
   const rows = [
-    { label: "Identificacao", done: identity, total: 3 },
+    { label: "Identificacao", done: identity, total: 2 },
     { label: "Objetivas", done: objectiveDone, total: 15 },
     { label: "Subjetivas", done: subjectiveDone, total: 15 }
   ];
@@ -478,7 +546,7 @@ function validateForm() {
   let valid = true;
   form.querySelectorAll(".invalid").forEach((field) => field.classList.remove("invalid"));
 
-  ["discord", "roblox", "tempoEb"].forEach((name) => {
+  ["roblox", "tempoEb"].forEach((name) => {
     const field = form.elements[name];
     if (!field.value.trim()) {
       field.classList.add("invalid");
@@ -537,7 +605,8 @@ async function submitForm() {
     localStorage.setItem(SUBMITTED_KEY, result.id || "1");
     dirtyDraft = false;
     confirmation.classList.remove("hidden");
-    confirmationText.textContent = `${submission.identity.discord}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%). Analise IA: ${result.aiRiskAverage}% de risco medio.`;
+    const greetingName = currentSession.username ? `@${currentSession.username}` : "Candidato";
+    confirmationText.textContent = `${greetingName}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%). Analise IA: ${result.aiRiskAverage}% de risco medio.`;
     form.querySelectorAll("input, textarea, button[type='submit']").forEach((el) => { el.disabled = true; });
     confirmation.scrollIntoView({ behavior: "smooth", block: "center" });
     toast("Avaliacao enviada.", "success", "Tudo certo");
@@ -679,7 +748,13 @@ function registerServiceWorker() {
 
 async function boot() {
   bindTheme();
+  bindSessionEvents();
   registerServiceWorker();
+  handleLoginCallback();
+  await checkSession();
+  if (!currentSession.authenticated) {
+    return;
+  }
   try {
     await loadExamFromServer();
   } catch (error) {

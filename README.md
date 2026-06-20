@@ -2,8 +2,22 @@
 
 Formulario de avaliacao do candidato com analise heuristica de IA e relatorios.
 
-> O painel administrativo agora roda em um projeto separado: `../Edital painel`.
-> Esta API expoe rotas `/api/admin/*` consumidas pelo painel via CORS.
+> **Painel admin unificado**: o painel administrativo agora roda dentro deste
+> mesmo projeto, em `/admin`. O projeto separado `../Edital painel` pode ser
+> desativado na Vercel - nao e mais necessario.
+
+## Login (unico para candidato e admin)
+
+Todo candidato precisa fazer login com Discord antes de acessar a prova
+(`Entrar com Discord` na pagina inicial). Qualquer conta Discord pode entrar
+e fazer a prova - o login serve para identificar o candidato com seguranca
+(acaba com fraude de digitar usuario falso) e evita preenchimentos automatizados.
+
+Se a mesma conta Discord estiver na lista `DISCORD_ALLOWED_USERS` (e tiver o
+cargo exigido, se `DISCORD_GUILD_ID`/`DISCORD_REQUIRED_ROLE_ID` estiverem
+configurados), essa conta tambem ganha acesso de administrador automaticamente:
+o botao **Painel** aparece no topo do site e leva para `/admin`, sem precisar
+logar de novo.
 
 ## Variaveis de ambiente (`.env`)
 

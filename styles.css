@@ -1187,3 +1187,116 @@ footer {
     flex-direction: column;
   }
 }
+
+/* ---- Painel admin (unificado dentro do edital) ---- */
+.config-panel {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(215, 173, 93, 0.35);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+
+.config-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.config-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.config-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  gap: 4px;
+}
+
+.config-form label.full {
+  grid-column: 1 / -1;
+}
+
+.config-form input {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: var(--input-bg, #fffaf0);
+  color: inherit;
+  font: inherit;
+}
+
+[data-theme="dark"] .config-form input {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.config-status {
+  grid-column: 1 / -1;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.config-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.active-now {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2c7a4b;
+  margin-right: 8px;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #b8860b;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.detail-box.alert {
+  border-color: #c0392b;
+  background: rgba(192, 57, 43, 0.08);
+}
+
+.reviewer-row {
+  display: flex;
+  gap: 8px;
+}
+
+.reviewer-row input {
+  flex: 1;
+}
+
+.modal-wide {
+  max-width: 900px;
+  width: 92%;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  text-align: left;
+}
+
+.compare-grid .answer-text {
+  white-space: pre-wrap;
+  font-size: 0.86rem;
+  margin-top: 6px;
+}
+
+@media (max-width: 640px) {
+  .compare-grid { grid-template-columns: 1fr; }
+}

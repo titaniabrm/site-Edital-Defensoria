@@ -4,11 +4,60 @@ import {
   verifySeedSignature,
   isValidAdminSession,
   createAdminSession,
+  createSession,
+  verifySession,
   hashIdentifier,
   shuffleWithSeed,
   jaccard,
   shingles
 } from "../server.js";
+
+describe("sessao unificada (candidato + admin)", () => {
+  it("cria e verifica uma sessao de candidato comum", () => {
+    const token = createSession({ discordId: "123", username: "fulano", isAdmin: false });
+    const session = verifySession(token);
+    expect(session).not.toBeNull();
+    expect(session.username).toBe("fulano");
+    expect(session.discordId).toBe("123");
+    expect(session.isAdmin).toBe(false);
+  });
+
+  it("cria e verifica uma sessao de admin", () => {
+    const token = createSession({ discordId: "999", username: "mudinhoxy", isAdmin: true });
+    const session = verifySession(token);
+    expect(session.isAdmin).toBe(true);
+  });
+
+  it("rejeita token adulterado", () => {
+    const token = createSession({ username: "fulano", isAdmin: false });
+    const tampered = token.slice(0, -1) + (token.endsWith("a") ? "b" : "a");
+    expect(verifySession(tampered)).toBeNull();
+  });
+
+  it("rejeita payload alterado sem ajustar assinatura", () => {
+    const token = createSession({ username: "fulano", isAdmin: false });
+    const [payload, sig] = token.split(".");
+    const forged = Buffer.from(JSON.stringify({ username: "admin", isAdmin: true, exp: Date.now() + 999999 })).toString("base64url");
+    expect(verifySession(`${forged}.${sig}`)).toBeNull();
+  });
+
+  it("rejeita token vazio ou malformado", () => {
+    expect(verifySession("")).toBeNull();
+    expect(verifySession(null)).toBeNull();
+    expect(verifySession("semponto")).toBeNull();
+  });
+
+  it("isValidAdminSession aceita apenas sessao com isAdmin true", () => {
+    const adminToken = createSession({ username: "x", isAdmin: true });
+    const userToken = createSession({ username: "y", isAdmin: false });
+    expect(isValidAdminSession(adminToken)).toBe(true);
+    expect(isValidAdminSession(userToken)).toBe(false);
+  });
+
+  it("createAdminSession continua funcionando (compat)", () => {
+    expect(isValidAdminSession(createAdminSession())).toBe(true);
+  });
+});
 
 describe("assinatura de seed (HMAC)", () => {
   it("aceita uma assinatura recem gerada", () => {

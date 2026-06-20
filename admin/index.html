@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Painel | Defensoria-Geral do Exercito</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="theme-color" content="#071a2b">
+</head>
+<body class="admin-page">
+  <header class="topbar">
+    <div class="brand">
+      <img src="/assets/defensoria-logo.webp" alt="Emblema da Defensoria-Geral do Exercito" width="64" height="64">
+      <div>
+        <p class="eyebrow">Painel administrativo</p>
+        <h1>Defensoria-Geral do Exercito</h1>
+      </div>
+    </div>
+    <nav class="top-actions" aria-label="Atalhos">
+      <span id="activeNow" class="active-now hidden" title="Candidatos preenchendo agora"></span>
+      <a class="ghost-button" href="/">Voltar ao edital</a>
+      <button class="ghost-button" type="button" id="themeToggle">Tema escuro</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="revisao" class="review-shell" aria-labelledby="revisaoTitulo">
+      <div class="section-heading">
+        <p class="eyebrow">Acesso restrito</p>
+        <h2 id="revisaoTitulo">Painel administrativo</h2>
+        <p>Entre com a mesma conta Discord usada no edital. So usuarios autorizados visualizam o painel.</p>
+      </div>
+
+      <div class="review-controls">
+        <button class="primary-button" type="button" id="discordLoginButton">Entrar com Discord</button>
+        <button class="secondary-button" type="button" id="exportJsonButton" disabled>Exportar JSON</button>
+        <button class="secondary-button" type="button" id="exportCsvButton" disabled>Exportar CSV</button>
+        <button class="secondary-button" type="button" id="exportApprovedPdf" disabled>PDF aprovados</button>
+        <button class="secondary-button" type="button" id="magicLinkButton" disabled>Gerar magic link</button>
+        <button class="secondary-button" type="button" id="logoutAdminButton" disabled>Sair</button>
+        <label class="file-import">
+          <span>Importar JSON</span>
+          <input id="importJsonInput" type="file" accept="application/json">
+        </label>
+      </div>
+
+      <div id="reviewLocked" class="empty-state">
+        Painel bloqueado. Apenas usuarios Discord autorizados podem acessar.
+      </div>
+
+      <div id="reviewDashboard" class="review-dashboard hidden">
+        <details class="config-panel" id="configPanel">
+          <summary>Configuracoes do edital</summary>
+          <form id="configForm" class="config-form">
+            <label>
+              <span>Inicio do edital</span>
+              <input type="datetime-local" name="examStartAt" required>
+            </label>
+            <label>
+              <span>Fim do edital</span>
+              <input type="datetime-local" name="examEndAt" required>
+            </label>
+            <label>
+              <span>Nota minima (%)</span>
+              <input type="number" name="minPerformancePercent" min="0" max="100" step="1" required>
+            </label>
+            <label>
+              <span>Duracao minima do form (segundos)</span>
+              <input type="number" name="minFormDurationSec" min="0" max="3600" step="1" required>
+            </label>
+            <label class="full">
+              <span>Usuarios Discord autorizados (separados por virgula)</span>
+              <input type="text" name="discordAllowedUsers" placeholder="mudinhoxy, titaniabrjv, yoursalf_.7">
+            </label>
+            <div class="config-status" id="configStatus"></div>
+            <div class="config-actions">
+              <button type="submit" class="primary-button">Salvar configuracoes</button>
+              <button type="button" id="reloadConfigButton" class="secondary-button">Recarregar</button>
+            </div>
+          </form>
+        </details>
+        <div class="summary-grid" id="summaryGrid"></div>
+        <div class="dashboard-layout">
+          <div class="submission-list">
+            <div class="panel-title">
+              <h3>Envios</h3>
+              <button class="danger-button" type="button" id="clearSubmissionsButton">Limpar envios</button>
+            </div>
+            <div class="filter-row">
+              <label>
+                <span>Buscar</span>
+                <input id="searchInput" type="search" placeholder="Discord ou Roblox">
+              </label>
+              <label>
+                <span>Filtro</span>
+                <select id="riskFilter">
+                  <option value="all">Todos</option>
+                  <option value="high">Maior risco de IA</option>
+                  <option value="review">Em analise</option>
+                  <option value="approved">Aprovados</option>
+                  <option value="rejected">Reprovados</option>
+                </select>
+              </label>
+              <label>
+                <span>Ordenar</span>
+                <select id="sortBy">
+                  <option value="date">Mais recentes</option>
+                  <option value="score">Maior % objetivas</option>
+                  <option value="risk">Maior risco IA</option>
+                </select>
+              </label>
+              <label>
+                <span>Desde</span>
+                <input id="dateFrom" type="date">
+              </label>
+              <label>
+                <span>Ate</span>
+                <input id="dateTo" type="date">
+              </label>
+            </div>
+            <div id="submissionList"></div>
+          </div>
+          <article class="submission-detail" id="submissionDetail">
+            <div class="empty-state">Selecione um candidato para ver a analise.</div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Defensoria-Geral do Exercito</span>
+    <span>Painel administrativo</span>
+  </footer>
+
+  <div id="compareModal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-body modal-wide">
+      <p class="eyebrow">Comparacao de respostas</p>
+      <div id="compareBody"></div>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" id="closeCompare">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="true"></div>
+  <script src="/admin/app.js"></script>
+</body>
+</html>

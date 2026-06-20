@@ -276,7 +276,7 @@ function consumeMagicLink(token) {
 
 async function notifyDiscord(submission, baseUrl) {
   if (!DISCORD_WEBHOOK_URL) return;
-  const target = baseUrl ? `${baseUrl.replace(/\/$/, "")}/admin` : (PUBLIC_ADMIN_URL || "");
+  const target = `${(baseUrl || DEFENSORIA_URL).replace(/\/$/, "")}/admin`;
   const payload = {
     username: "Defensoria-Geral do Exercito",
     embeds: [{
@@ -354,6 +354,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// Painel admin agora roda dentro deste mesmo projeto (mesma origem).
+// Registrado ANTES do express.static para que a logica de magic link
+// (cookie + log) sempre rode - senao o static intercepta /admin antes.
+app.get(["/admin", "/admin/"], (req, res) => {
+  const token = String(req.query?.token || "");
+  if (token && consumeMagicLink(token)) {
+    setAdminCookie(res);
+    logger.info({ event: "magic.consumed" }, "magic link usado");
+  }
+  res.sendFile(path.join(__dirname, "admin", "index.html"));
+});
+
+app.get("/admin/app.js", (req, res) => {
+  res.type("text/javascript").sendFile(path.join(__dirname, "admin", "app.js"));
+});
+
 app.use(express.static(__dirname, {
   extensions: ["html"],
   maxAge: process.env.VERCEL === "1" ? "1h" : 0
@@ -380,26 +396,6 @@ app.get("/assets/:file", (req, res) => {
   res.sendFile(path.join(__dirname, "assets", safe));
 });
 
-app.get(["/admin", "/admin/"], (req, res) => {
-  const token = String(req.query?.token || "");
-  if (token && consumeMagicLink(token)) {
-    setAdminCookie(res);
-    logger.info({ event: "magic.consumed" }, "magic link usado");
-    if (PUBLIC_ADMIN_URL) {
-      res.redirect(`${PUBLIC_ADMIN_URL.replace(/\/$/, "")}/?token=consumed`);
-      return;
-    }
-  }
-  if (PUBLIC_ADMIN_URL) {
-    res.redirect(PUBLIC_ADMIN_URL);
-    return;
-  }
-  res.status(410).type("text/plain").send(
-    "O painel administrativo agora roda em um projeto separado.\n" +
-    "Defina PUBLIC_ADMIN_URL para redirecionar automaticamente."
-  );
-});
-
 function parseCookies(req) {
   return Object.fromEntries(
     String(req.headers.cookie || "")
@@ -413,40 +409,63 @@ function parseCookies(req) {
   );
 }
 
-function signSession(expiration) {
-  return crypto
-    .createHmac("sha256", ADMIN_SESSION_SECRET)
-    .update(String(expiration))
-    .digest("hex");
+// Sessao unificada: serve tanto para o candidato (qualquer conta Discord)
+// quanto para o admin (mesma conta, se estiver na allowlist -> isAdmin=true).
+function signPayload(payload) {
+  return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(payload).digest("hex");
 }
 
-function createAdminSession() {
-  const expiration = Date.now() + 1000 * 60 * 60 * 8;
-  return `${expiration}.${signSession(expiration)}`;
+function createSession({ discordId = null, username = "admin", isAdmin = false } = {}) {
+  const exp = Date.now() + 1000 * 60 * 60 * 8;
+  const payload = Buffer.from(JSON.stringify({ discordId, username, isAdmin: Boolean(isAdmin), exp })).toString("base64url");
+  return `${payload}.${signPayload(payload)}`;
 }
 
-function isValidAdminSession(token) {
-  if (!token || !String(token).includes(".")) return false;
-  const [expiration, signature] = String(token).split(".");
-  if (!expiration || !signature || Number(expiration) < Date.now()) return false;
-  const expected = signSession(expiration);
+function verifySession(token) {
+  if (!token || !String(token).includes(".")) return null;
+  const lastDot = String(token).lastIndexOf(".");
+  const payload = String(token).slice(0, lastDot);
+  const signature = String(token).slice(lastDot + 1);
+  if (!payload || !signature) return null;
+  const expected = signPayload(payload);
   const sigBuf = Buffer.from(signature, "hex");
   const expBuf = Buffer.from(expected, "hex");
-  if (sigBuf.length === 0 || sigBuf.length !== expBuf.length) return false;
+  if (sigBuf.length === 0 || sigBuf.length !== expBuf.length) return null;
   try {
-    return crypto.timingSafeEqual(sigBuf, expBuf);
+    if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
   } catch {
-    return false;
+    return null;
+  }
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!data.exp || Date.now() > data.exp) return null;
+    return data;
+  } catch {
+    return null;
   }
 }
 
-function setAdminCookie(res) {
-  const token = createAdminSession();
-  res.setHeader("Set-Cookie", `admin_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
+// Mantidos por compatibilidade (PIN admin / testes): sessao admin "pura".
+function createAdminSession() {
+  return createSession({ username: "admin", isAdmin: true });
 }
 
-function clearAdminCookie(res) {
-  res.setHeader("Set-Cookie", "admin_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+function isValidAdminSession(token) {
+  const session = verifySession(token);
+  return Boolean(session && session.isAdmin);
+}
+
+function setSessionCookie(res, token) {
+  res.setHeader("Set-Cookie", `dge_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
+}
+
+function clearSessionCookie(res) {
+  res.setHeader("Set-Cookie", "dge_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+}
+
+// Compat: nome antigo usado nos fluxos de PIN/magic link.
+function setAdminCookie(res) {
+  setSessionCookie(res, createAdminSession());
 }
 
 function getAutomaticStatus(performancePercent, aiRiskAverage, aiHighRiskCount) {
@@ -696,11 +715,13 @@ export {
   verifySeedSignature,
   isValidAdminSession,
   createAdminSession,
+  createSession,
+  verifySession,
   hashIdentifier,
   validateSubmission
 };
 
-function validateSubmission(body) {
+function validateSubmission(body, session) {
   const identity = body?.identity || {};
   const objectiveAnswers = Array.isArray(body?.objectiveAnswers) ? body.objectiveAnswers : [];
   const subjectiveAnswers = Array.isArray(body?.subjectiveAnswers) ? body.subjectiveAnswers : [];
@@ -719,7 +740,8 @@ function validateSubmission(body) {
     throw new Error("Fora do periodo do edital.");
   }
 
-  if (!identity.discord?.trim() || !identity.roblox?.trim() || !identity.tempoEb?.trim()) {
+  const discordUsername = String(session?.username || "").trim();
+  if (!discordUsername || !identity.roblox?.trim() || !identity.tempoEb?.trim()) {
     throw new Error("Dados do candidato incompletos.");
   }
   if (objectiveAnswers.length !== objectiveQuestions.length) {
@@ -748,7 +770,8 @@ function validateSubmission(body) {
 
   return {
     identity: {
-      discord: String(identity.discord).trim(),
+      discord: discordUsername,
+      discordId: session?.discordId || null,
       roblox: String(identity.roblox).trim(),
       tempoEb: String(identity.tempoEb).trim()
     },
@@ -994,8 +1017,10 @@ async function saveSubmission(submission) {
 async function findDuplicateSubmission(identity) {
   const discord = normalizeText(identity.discord);
   const roblox = normalizeText(identity.roblox);
+  const discordId = identity.discordId;
   const submissions = await listSubmissions();
   return submissions.find((submission) => (
+    (discordId && submission.identity?.discordId === discordId) ||
     normalizeText(submission.identity?.discord) === discord ||
     normalizeText(submission.identity?.roblox) === roblox
   ));
@@ -1159,21 +1184,40 @@ function extractBearer(req) {
   return match ? match[1].trim() : "";
 }
 
-function requireAdmin(req, res, next) {
+function readSession(req) {
   const cookies = parseCookies(req);
   const bearer = extractBearer(req);
-  const hasSession = isValidAdminSession(cookies.admin_session) || isValidAdminSession(bearer);
+  return verifySession(cookies.dge_session) || verifySession(bearer);
+}
+
+function requireAdmin(req, res, next) {
+  const session = readSession(req);
   const hasPassword = req.header("x-admin-pin") === ADMIN_PIN;
 
-  if (!hasSession && !hasPassword) {
-    res.status(401).json({ error: "Senha administrativa invalida." });
+  if (session && session.isAdmin) {
+    req.session = session;
+    next();
     return;
   }
 
-  if (hasPassword && !hasSession) {
+  if (hasPassword) {
+    req.session = { username: "admin-pin", discordId: null, isAdmin: true };
     setAdminCookie(res);
+    next();
+    return;
   }
 
+  res.status(401).json({ error: "Acesso restrito a administradores." });
+}
+
+// Exige apenas login Discord (qualquer conta) para acessar a prova.
+function requireSession(req, res, next) {
+  const session = readSession(req);
+  if (!session) {
+    res.status(401).json({ error: "Faca login com Discord para continuar." });
+    return;
+  }
+  req.session = session;
   next();
 }
 
@@ -1198,7 +1242,7 @@ function verifySeedSignature(seed, signature) {
   }
 }
 
-app.get("/api/exam", async (req, res) => {
+app.get("/api/exam", requireSession, async (req, res) => {
   await ensureConfig();
   const seed = crypto.randomBytes(12).toString("hex");
   const exam = buildExamForSession(seed);
@@ -1212,6 +1256,7 @@ app.get("/api/exam", async (req, res) => {
     isOpen: withinExamWindow(),
     honeypotField: HONEYPOT_FIELD,
     minDurationMs: getMinFormDuration(),
+    you: { username: req.session.username, isAdmin: Boolean(req.session.isAdmin) },
     ...exam
   });
 });
@@ -1286,7 +1331,7 @@ app.patch("/api/admin/config", requireAdmin, async (req, res) => {
 
 app.post("/api/admin/magic", requireAdmin, (req, res) => {
   const { token, expiresAt } = createMagicLink();
-  const baseUrl = PUBLIC_ADMIN_URL || `${req.protocol}://${req.get("host")}`;
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
   const url = `${baseUrl.replace(/\/$/, "")}/admin?token=${token}`;
   logger.info({ event: "magic.created", expiresAt }, "magic link gerado");
   if (DISCORD_WEBHOOK_URL) {
@@ -1398,13 +1443,16 @@ function rateLimitLogin(req, res, next) {
 
 const discordStateStore = new Map();
 
+// Login unico: qualquer conta Discord libera a prova. Se a conta estiver na
+// allowlist (e tiver o cargo exigido, se configurado), tambem libera o painel.
+// Mantemos o caminho /api/admin/discord/* (registrado no portal do Discord).
 app.get("/api/admin/discord/start", (req, res) => {
   if (!DISCORD_CLIENT_ID || !DISCORD_REDIRECT_URI || !DISCORD_CLIENT_SECRET) {
     res.status(503).json({ error: "Login Discord nao configurado no servidor." });
     return;
   }
   const state = crypto.randomBytes(16).toString("hex");
-  const returnTo = String(req.query?.return_to || ADMIN_PANEL_ORIGIN || PUBLIC_ADMIN_URL || "");
+  const returnTo = String(req.query?.return_to || "/").slice(0, 200);
   discordStateStore.set(state, { createdAt: Date.now(), returnTo });
   for (const [k, v] of discordStateStore) {
     if (Date.now() - v.createdAt > 10 * 60 * 1000) discordStateStore.delete(k);
@@ -1424,7 +1472,7 @@ app.get("/api/admin/discord/start", (req, res) => {
 });
 
 app.get("/api/admin/discord/callback", async (req, res) => {
-  const fallbackTarget = ADMIN_PANEL_ORIGIN || PUBLIC_ADMIN_URL || "/";
+  const fallbackTarget = "/";
   try {
     const code = String(req.query?.code || "");
     const state = String(req.query?.state || "");
@@ -1456,11 +1504,11 @@ app.get("/api/admin/discord/callback", async (req, res) => {
     const username = String(user.username || "").toLowerCase();
     const target = stored.returnTo || fallbackTarget;
 
+    // Qualquer conta Discord pode fazer a prova. So entra como admin se
+    // estiver na allowlist (e tiver o cargo exigido, se configurado).
     const inAllowlist = getAllowedDiscord().includes(username);
-
-    // 2FA por cargo: se guild + role configurados, exige o cargo no servidor.
     let roleOk = true;
-    if (DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID) {
+    if (inAllowlist && DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID) {
       roleOk = false;
       try {
         const memberRes = await fetch(
@@ -1476,21 +1524,16 @@ app.get("/api/admin/discord/callback", async (req, res) => {
       }
     }
 
-    if (!inAllowlist || !roleOk) {
-      logger.warn({ event: "discord.unauthorized", username, inAllowlist, roleOk }, "Usuario Discord nao autorizado");
-      recordAudit("discord.login.denied", username, null, { inAllowlist, roleOk }, req);
-      res.redirect(`${target.replace(/\/$/, "")}/?discord=unauthorized&user=${encodeURIComponent(user.username || "?")}`);
-      return;
-    }
-
-    setAdminCookie(res);
-    const adminToken = createAdminSession();
-    logger.info({ event: "discord.login", username }, "Login Discord OK");
-    recordAudit("discord.login", username, null, null, req);
-    res.redirect(`${target.replace(/\/$/, "")}/?discord=ok&token=${encodeURIComponent(adminToken)}&user=${encodeURIComponent(user.username || "")}`);
+    const isAdmin = inAllowlist && roleOk;
+    const session = createSession({ discordId: user.id, username, isAdmin });
+    setSessionCookie(res, session);
+    logger.info({ event: "discord.login", username, isAdmin }, "Login Discord OK");
+    recordAudit(isAdmin ? "discord.login.admin" : "discord.login", username, null, null, req);
+    const sep = target.includes("?") ? "&" : "?";
+    res.redirect(`${target}${sep}login=ok&user=${encodeURIComponent(username)}`);
   } catch (error) {
     logger.warn({ err: error.message }, "Discord login failed");
-    res.redirect(`${fallbackTarget.replace(/\/$/, "")}/?discord=error&reason=${encodeURIComponent(error.message)}`);
+    res.redirect(`${fallbackTarget}?login=error&reason=${encodeURIComponent(error.message)}`);
   }
 });
 
@@ -1499,6 +1542,21 @@ app.get("/api/admin/discord/status", (req, res) => {
     configured: Boolean(DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET && DISCORD_REDIRECT_URI),
     allowedCount: getAllowedDiscord().length,
     roleCheck: Boolean(DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID)
+  });
+});
+
+// Quem esta logado agora (candidato ou admin).
+app.get("/api/session", (req, res) => {
+  const session = readSession(req);
+  if (!session) {
+    res.json({ authenticated: false });
+    return;
+  }
+  res.json({
+    authenticated: true,
+    username: session.username,
+    discordId: session.discordId,
+    isAdmin: Boolean(session.isAdmin)
   });
 });
 
@@ -1518,20 +1576,19 @@ app.post("/api/admin/login", rateLimitLogin, (req, res) => {
 });
 
 app.post("/api/admin/logout", (req, res) => {
-  clearAdminCookie(res);
+  clearSessionCookie(res);
   res.json({ ok: true });
 });
 
-// Renova a sessao admin se a atual ainda for valida (refresh silencioso).
+// Renova a sessao se a atual ainda for valida (refresh silencioso).
 app.post("/api/admin/refresh", requireAdmin, (req, res) => {
-  setAdminCookie(res);
-  const token = createAdminSession();
+  const token = createSession({
+    discordId: req.session.discordId,
+    username: req.session.username,
+    isAdmin: true
+  });
+  setSessionCookie(res, token);
   res.json({ ok: true, token });
-});
-
-app.get("/api/admin/session", (req, res) => {
-  const cookies = parseCookies(req);
-  res.json({ authenticated: isValidAdminSession(cookies.admin_session) });
 });
 
 const submissionRate = new Map();
@@ -1558,10 +1615,10 @@ function rateLimitSubmissions(req, res, next) {
   next();
 }
 
-app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
+app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, res) => {
   try {
     await ensureConfig();
-    const valid = validateSubmission(req.body);
+    const valid = validateSubmission(req.body, req.session);
     const duplicate = await findDuplicateSubmission(valid.identity);
     if (duplicate) {
       res.status(409).json({
@@ -1637,7 +1694,7 @@ app.post("/api/submissions", rateLimitSubmissions, async (req, res) => {
       simMax: similaritySummary.maxRatio,
       status
     }, "novo envio");
-    const baseUrl = PUBLIC_ADMIN_URL || `${req.protocol}://${req.get("host")}`;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
     notifyDiscord(submission, baseUrl);
     res.status(201).json({
       id: submission.id,

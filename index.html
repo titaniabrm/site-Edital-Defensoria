@@ -18,14 +18,28 @@
       </div>
     </div>
     <nav class="top-actions" aria-label="Atalhos">
+      <span id="sessionLabel" class="active-now hidden"></span>
+      <button class="ghost-button hidden" type="button" id="painelButton">Painel</button>
+      <button class="ghost-button hidden" type="button" id="logoutButton">Sair</button>
+      <button class="primary-button hidden" type="button" id="discordLoginButton">Entrar com Discord</button>
       <button class="ghost-button" type="button" id="themeToggle">Tema escuro</button>
-      <button class="ghost-button" type="button" data-scroll-target="formulario">Formulario</button>
+      <button class="ghost-button candidate-only" type="button" data-scroll-target="formulario">Formulario</button>
     </nav>
   </header>
 
   <main>
     <div id="examClosedBanner" class="exam-banner hidden" role="status"></div>
-    <section class="hero candidate-only">
+
+    <section id="loginGate" class="rules-section" aria-live="polite">
+      <div class="section-heading">
+        <p class="eyebrow">Acesso restrito</p>
+        <h2>Faca login com Discord para continuar</h2>
+        <p>Use a mesma conta Discord do servidor da Defensoria. O login identifica o candidato e evita fraudes - nenhuma permissao extra e solicitada.</p>
+      </div>
+      <button class="primary-button" type="button" id="loginGateButton">Entrar com Discord</button>
+    </section>
+
+    <section class="hero candidate-only hidden">
       <div class="hero-copy">
         <p class="eyebrow">Avaliacao de ingresso</p>
         <h2>Formulario oficial para candidatos da Defensoria</h2>
@@ -44,7 +58,7 @@
           <span id="progressBar"></span>
         </div>
         <ul class="section-progress" id="sectionProgress" aria-label="Progresso por secao">
-          <li data-section="identidade"><span>Identificacao</span><strong>0/3</strong></li>
+          <li data-section="identidade"><span>Identificacao</span><strong>0/2</strong></li>
           <li data-section="objetivas"><span>Objetivas</span><strong>0/15</strong></li>
           <li data-section="subjetivas"><span>Subjetivas</span><strong>0/15</strong></li>
         </ul>
@@ -53,7 +67,7 @@
       </aside>
     </section>
 
-    <section class="rules-section candidate-only" aria-labelledby="regrasTitulo">
+    <section class="rules-section candidate-only hidden" aria-labelledby="regrasTitulo">
       <div class="section-heading">
         <p class="eyebrow">Regras</p>
         <h2 id="regrasTitulo">Regras do formulario</h2>
@@ -86,7 +100,7 @@
       </div>
     </section>
 
-    <form id="examForm" class="form-shell candidate-only" autocomplete="off">
+    <form id="examForm" class="form-shell candidate-only hidden" autocomplete="off">
       <div class="honeypot" aria-hidden="true">
         <label>Nome do meio (deixe em branco)
           <input type="text" name="middlename" tabindex="-1" autocomplete="off">
@@ -98,10 +112,10 @@
           <h2 id="dadosTitulo">Dados do candidato</h2>
         </div>
         <div class="field-grid">
-          <label>
-            <span>Qual seu nome de usuario no Discord?</span>
-            <input name="discord" type="text" required placeholder="Ex.: usuario#0000 ou @usuario">
-          </label>
+          <div class="detail-box">
+            <span>Logado com Discord como</span>
+            <strong id="loggedDiscordLabel">-</strong>
+          </div>
           <label>
             <span>Qual seu nome de usuario no Roblox?</span>
             <input name="roblox" type="text" required placeholder="Ex.: UsuarioRoblox">
@@ -169,7 +183,7 @@
       <button class="secondary-button" type="button" id="newSubmissionButton">Novo candidato</button>
     </section>
 
-    <nav class="question-index" id="questionIndex" aria-label="Indice de questoes"></nav>
+    <nav class="question-index candidate-only hidden" id="questionIndex" aria-label="Indice de questoes"></nav>
   </main>
 
   <footer>
