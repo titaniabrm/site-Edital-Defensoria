@@ -718,7 +718,9 @@ export {
   createSession,
   verifySession,
   hashIdentifier,
-  validateSubmission
+  validateSubmission,
+  createOAuthState,
+  verifyOAuthState
 };
 
 function validateSubmission(body, session) {
@@ -1441,7 +1443,41 @@ function rateLimitLogin(req, res, next) {
   next();
 }
 
-const discordStateStore = new Map();
+// O state do OAuth e auto-verificavel (assinado com HMAC) em vez de guardado
+// em memoria: na Vercel cada requisicao pode cair numa instancia serverless
+// diferente, e um Map em memoria nao sobrevive entre /start e /callback.
+function createOAuthState(returnTo) {
+  const payload = Buffer.from(JSON.stringify({
+    returnTo: String(returnTo || "/").slice(0, 200),
+    nonce: crypto.randomBytes(8).toString("hex"),
+    exp: Date.now() + 10 * 60 * 1000
+  })).toString("base64url");
+  return `${payload}.${signPayload(payload)}`;
+}
+
+function verifyOAuthState(state) {
+  if (!state || !String(state).includes(".")) return null;
+  const lastDot = String(state).lastIndexOf(".");
+  const payload = String(state).slice(0, lastDot);
+  const signature = String(state).slice(lastDot + 1);
+  if (!payload || !signature) return null;
+  const expected = signPayload(payload);
+  const sigBuf = Buffer.from(signature, "hex");
+  const expBuf = Buffer.from(expected, "hex");
+  if (sigBuf.length === 0 || sigBuf.length !== expBuf.length) return null;
+  try {
+    if (!crypto.timingSafeEqual(sigBuf, expBuf)) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!data.exp || Date.now() > data.exp) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 // Login unico: qualquer conta Discord libera a prova. Se a conta estiver na
 // allowlist (e tiver o cargo exigido, se configurado), tambem libera o painel.
@@ -1451,12 +1487,8 @@ app.get("/api/admin/discord/start", (req, res) => {
     res.status(503).json({ error: "Login Discord nao configurado no servidor." });
     return;
   }
-  const state = crypto.randomBytes(16).toString("hex");
   const returnTo = String(req.query?.return_to || "/").slice(0, 200);
-  discordStateStore.set(state, { createdAt: Date.now(), returnTo });
-  for (const [k, v] of discordStateStore) {
-    if (Date.now() - v.createdAt > 10 * 60 * 1000) discordStateStore.delete(k);
-  }
+  const state = createOAuthState(returnTo);
   const scope = DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID
     ? "identify guilds.members.read"
     : "identify";
@@ -1476,8 +1508,7 @@ app.get("/api/admin/discord/callback", async (req, res) => {
   try {
     const code = String(req.query?.code || "");
     const state = String(req.query?.state || "");
-    const stored = discordStateStore.get(state);
-    discordStateStore.delete(state);
+    const stored = verifyOAuthState(state);
     if (!code || !stored) {
       throw new Error("Sessao OAuth invalida ou expirada.");
     }
