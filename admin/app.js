@@ -9,15 +9,11 @@ const summaryGrid = document.querySelector("#summaryGrid");
 const submissionList = document.querySelector("#submissionList");
 const submissionDetail = document.querySelector("#submissionDetail");
 const riskFilter = document.querySelector("#riskFilter");
-const exportJsonButton = document.querySelector("#exportJsonButton");
-const exportCsvButton = document.querySelector("#exportCsvButton");
-const exportApprovedPdf = document.querySelector("#exportApprovedPdf");
 const logoutAdminButton = document.querySelector("#logoutAdminButton");
 const searchInput = document.querySelector("#searchInput");
 const sortBy = document.querySelector("#sortBy");
 const dateFrom = document.querySelector("#dateFrom");
 const dateTo = document.querySelector("#dateTo");
-const magicLinkButton = document.querySelector("#magicLinkButton");
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -374,110 +370,35 @@ async function refreshActiveNow() {
   }
 }
 
+// Atualiza a lista de envios em segundo plano para que novas respostas dos
+// candidatos apareçam sem precisar recarregar a pagina manualmente.
+async function refreshSubmissionsQuietly() {
+  try {
+    const response = await api("/api/admin/submissions");
+    if (!response.ok) return;
+    loadedSubmissions = await response.json();
+    renderReview();
+  } catch {
+    // mantem a lista atual em caso de falha temporaria
+  }
+}
+
 function enterReviewMode() {
   reviewUnlocked = true;
   reviewLocked.classList.add("hidden");
   reviewDashboard.classList.remove("hidden");
-  exportJsonButton.disabled = false;
-  exportCsvButton.disabled = false;
-  exportApprovedPdf.disabled = false;
   logoutAdminButton.disabled = false;
-  if (magicLinkButton) magicLinkButton.disabled = false;
   refreshActiveNow();
-  if (!activePollTimer) activePollTimer = setInterval(refreshActiveNow, 15000);
+  if (!activePollTimer) {
+    activePollTimer = setInterval(() => {
+      refreshActiveNow();
+      refreshSubmissionsQuietly();
+    }, 15000);
+  }
   if (!sessionRefreshTimer) {
     sessionRefreshTimer = setInterval(() => {
       api("/api/admin/refresh", { method: "POST" }).catch(() => {});
     }, 10 * 60 * 1000);
-  }
-}
-
-function downloadFile(filename, content, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function exportJson() {
-  const data = getFilteredSubmissions();
-  downloadFile("envios-defensoria.json", JSON.stringify(data, null, 2), "application/json");
-  toast(`${data.length} envios exportados (filtro atual).`, "success");
-}
-
-function exportCsv() {
-  const data = getFilteredSubmissions();
-  const rows = [
-    ["Discord", "Roblox", "Tempo EB", "Data", "Objetivas", "Total", "Risco IA medio", "Subjetivas com alerta", "Alto risco", "Status", "Revisor"]
-  ];
-  data.forEach((item) => {
-    rows.push([
-      item.identity.discord,
-      item.identity.roblox,
-      item.identity.tempoEb,
-      formatDate(item.submittedAt),
-      item.objectiveScore,
-      item.objectiveTotal,
-      item.aiRiskAverage,
-      item.aiFlaggedCount,
-      item.aiHighRiskCount,
-      item.status,
-      item.reviewer || ""
-    ]);
-  });
-  const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(";")).join("\n");
-  downloadFile("envios-defensoria.csv", csv, "text/csv;charset=utf-8");
-  toast(`${data.length} envios exportados (filtro atual).`, "success");
-}
-
-async function exportApprovedConsolidated() {
-  const response = await api("/api/admin/report/approved.pdf");
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    toast(data.error || "Falha ao gerar PDF consolidado.", "error");
-    return;
-  }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  window.open(url, "_blank");
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
-function importJson(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    try {
-      const imported = JSON.parse(String(reader.result || "[]"));
-      if (!Array.isArray(imported)) throw new Error("Formato invalido");
-      const merged = [...loadedSubmissions];
-      imported.forEach((item) => {
-        if (item?.id && !merged.some((saved) => saved.id === item.id)) {
-          merged.push(item);
-        }
-      });
-      loadedSubmissions = merged;
-      renderReview();
-      toast("Importacao concluida.", "success");
-    } catch {
-      toast("Nao foi possivel importar o arquivo JSON.", "error");
-    }
-  });
-  reader.readAsText(file);
-}
-
-async function requestMagicLink() {
-  try {
-    const response = await api("/api/admin/magic", { method: "POST" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Falha ao gerar link.");
-    await navigator.clipboard?.writeText(data.url).catch(() => {});
-    toast(`Link copiado. Valido ate ${new Date(data.expiresAt).toLocaleTimeString("pt-BR")}.`, "success", "Magic link");
-  } catch (error) {
-    toast(error.message, "error");
   }
 }
 
@@ -720,11 +641,6 @@ function bindEvents() {
     const returnTo = window.location.pathname;
     window.location.href = `/api/admin/discord/start?return_to=${encodeURIComponent(returnTo)}`;
   });
-  document.querySelector("#exportJsonButton")?.addEventListener("click", exportJson);
-  document.querySelector("#exportCsvButton")?.addEventListener("click", exportCsv);
-  document.querySelector("#exportApprovedPdf")?.addEventListener("click", exportApprovedConsolidated);
-  document.querySelector("#importJsonInput")?.addEventListener("change", (event) => importJson(event.target.files[0]));
-  document.querySelector("#magicLinkButton")?.addEventListener("click", requestMagicLink);
   document.querySelector("#clearSubmissionsButton")?.addEventListener("click", async () => {
     if (!confirm("Tem certeza que deseja apagar os envios salvos no banco?")) return;
     const response = await api("/api/admin/submissions", { method: "DELETE" });
@@ -762,11 +678,7 @@ function bindEvents() {
     reviewDashboard.classList.add("hidden");
     reviewLocked.classList.remove("hidden");
     reviewLocked.textContent = "Painel bloqueado. Apenas usuarios Discord autorizados podem acessar.";
-    exportJsonButton.disabled = true;
-    exportCsvButton.disabled = true;
-    exportApprovedPdf.disabled = true;
     logoutAdminButton.disabled = true;
-    if (magicLinkButton) magicLinkButton.disabled = true;
     if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
     if (sessionRefreshTimer) { clearInterval(sessionRefreshTimer); sessionRefreshTimer = null; }
     toast("Sessao encerrada.", "success");

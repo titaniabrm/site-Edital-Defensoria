@@ -4,6 +4,7 @@ let examSeed = "";
 let examSeedSignature = "";
 let formStartedAt = "";
 let examEndAt = "";
+let serverAlreadySubmitted = false;
 
 const DRAFT_KEY = "dge_draft_v1";
 const SUBMITTED_KEY = "dge_submitted_v1";
@@ -711,6 +712,17 @@ async function loadExamFromServer() {
   formStartedAt = data.serverNow;
   examEndAt = data.examEndAt || "";
   if (!data.isOpen) renderExamClosedBanner(data.examStartAt, data.examEndAt);
+
+  // O servidor e a fonte da verdade sobre "ja enviou": sincroniza o
+  // localStorage com ela. Assim, quando o admin limpa os envios no painel,
+  // o candidato consegue enviar de novo sem precisar limpar nada no proprio
+  // navegador (a flag antiga ficaria presa pra sempre senao).
+  serverAlreadySubmitted = Boolean(data.you?.alreadySubmitted);
+  if (serverAlreadySubmitted) {
+    localStorage.setItem(SUBMITTED_KEY, "1");
+  } else {
+    localStorage.removeItem(SUBMITTED_KEY);
+  }
 }
 
 function renderExamClosedBanner(start, end) {
@@ -770,8 +782,7 @@ async function boot() {
   tickClock();
   setInterval(tickClock, 1000);
 
-  const alreadySubmitted = Boolean(localStorage.getItem(SUBMITTED_KEY));
-  if (alreadySubmitted) {
+  if (serverAlreadySubmitted) {
     toast("Voce ja enviou esta avaliacao.", "info");
     form.querySelectorAll("input, textarea, button[type='submit']").forEach((el) => { el.disabled = true; });
   } else {

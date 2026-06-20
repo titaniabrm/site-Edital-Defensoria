@@ -1028,6 +1028,19 @@ async function findDuplicateSubmission(identity) {
   ));
 }
 
+// Usado pelo /api/exam para avisar o candidato se ele ja enviou (sem
+// depender de uma flag no localStorage, que fica desatualizada quando o
+// admin limpa os envios no painel).
+async function findSubmissionForSession(session) {
+  const discordId = session?.discordId;
+  const discord = normalizeText(session?.username);
+  const submissions = await listSubmissions();
+  return submissions.find((submission) => (
+    (discordId && submission.identity?.discordId === discordId) ||
+    normalizeText(submission.identity?.discord) === discord
+  ));
+}
+
 async function getSubmissionById(id) {
   if (supabase) {
     const { data, error } = await supabase
@@ -1249,6 +1262,12 @@ app.get("/api/exam", requireSession, async (req, res) => {
   const seed = crypto.randomBytes(12).toString("hex");
   const exam = buildExamForSession(seed);
   const issuedAt = Date.now();
+  let alreadySubmitted = false;
+  try {
+    alreadySubmitted = Boolean(await findSubmissionForSession(req.session));
+  } catch (error) {
+    logger.warn({ err: error.message }, "exam.alreadySubmitted.check.failed");
+  }
   res.json({
     seed,
     seedSignature: `${issuedAt}.${signSeed(seed, issuedAt)}`,
@@ -1258,7 +1277,7 @@ app.get("/api/exam", requireSession, async (req, res) => {
     isOpen: withinExamWindow(),
     honeypotField: HONEYPOT_FIELD,
     minDurationMs: getMinFormDuration(),
-    you: { username: req.session.username, isAdmin: Boolean(req.session.isAdmin) },
+    you: { username: req.session.username, isAdmin: Boolean(req.session.isAdmin), alreadySubmitted },
     ...exam
   });
 });
