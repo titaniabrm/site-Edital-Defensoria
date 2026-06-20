@@ -383,16 +383,52 @@ async function refreshSubmissionsQuietly() {
   }
 }
 
+function renderTimelineChart(perDay) {
+  const el = document.querySelector("#timelineChart");
+  if (!el) return;
+  if (!perDay || !perDay.length) {
+    el.innerHTML = `<div class="empty-state">Sem envios registrados ainda.</div>`;
+    return;
+  }
+  const max = Math.max(1, ...perDay.map(([, count]) => count));
+  const width = Math.max(220, perDay.length * 44);
+  const bars = perDay.map(([day, count], index) => {
+    const height = Math.round((count / max) * 70);
+    const label = day.slice(5).replace("-", "/");
+    return `
+      <g transform="translate(${index * 44 + 10}, 0)">
+        <rect x="0" y="${90 - height}" width="30" height="${height}" rx="3"></rect>
+        <text x="15" y="${Math.max(12, 84 - height)}" text-anchor="middle" class="bar-value">${count}</text>
+        <text x="15" y="106" text-anchor="middle" class="bar-label">${label}</text>
+      </g>
+    `;
+  }).join("");
+  el.innerHTML = `<svg class="bar-chart timeline-chart" viewBox="0 0 ${width} 116" role="img">${bars}</svg>`;
+}
+
+async function loadMetricsChart() {
+  try {
+    const res = await api("/api/admin/metrics");
+    if (!res.ok) return;
+    const data = await res.json();
+    renderTimelineChart(data.perDay);
+  } catch {
+    // mantem o estado anterior em caso de falha temporaria
+  }
+}
+
 function enterReviewMode() {
   reviewUnlocked = true;
   reviewLocked.classList.add("hidden");
   reviewDashboard.classList.remove("hidden");
   logoutAdminButton.disabled = false;
   refreshActiveNow();
+  loadMetricsChart();
   if (!activePollTimer) {
     activePollTimer = setInterval(() => {
       refreshActiveNow();
       refreshSubmissionsQuietly();
+      loadMetricsChart();
     }, 15000);
   }
   if (!sessionRefreshTimer) {

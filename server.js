@@ -306,6 +306,27 @@ async function notifyDiscord(submission, baseUrl) {
   }
 }
 
+// Avisa no canal do webhook quando um candidato e aprovado/reprovado.
+// Nao e uma DM (precisaria de um bot Discord configurado) - usa o mesmo
+// webhook que ja avisa sobre novos envios.
+async function notifyStatusChange(identity, status) {
+  if (!DISCORD_WEBHOOK_URL || !identity) return;
+  const emoji = status === "Aprovado" ? "✅" : status === "Reprovado" ? "❌" : "🔎";
+  try {
+    const response = await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "Defensoria-Geral do Exercito",
+        content: `${emoji} Candidato **@${identity.discord || "?"}** teve o status atualizado para **${status}**.`
+      })
+    });
+    if (!response.ok) logger.warn({ status: response.status }, "status webhook nao OK");
+  } catch (error) {
+    logger.warn({ err: error.message }, "status webhook falhou");
+  }
+}
+
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false }
@@ -1831,9 +1852,11 @@ app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) =>
       return;
     }
     const note = String(req.body?.note || "");
+    const target = await getSubmissionById(req.params.id).catch(() => null);
     const entry = await updateSubmissionStatus(req.params.id, status, note, "admin");
     logger.info({ event: "submission.status", id: req.params.id, status }, "status atualizado");
     recordAudit("submission.status", "admin", req.params.id, { status }, req);
+    if (target) notifyStatusChange(target.identity, status);
     res.json({ ok: true, status, entry });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao atualizar status." });
