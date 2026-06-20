@@ -41,80 +41,99 @@
       </div>
 
       <div id="reviewDashboard" class="review-dashboard hidden">
-        <details class="config-panel" id="configPanel">
-          <summary>Configuracoes do edital</summary>
-          <form id="configForm" class="config-form">
-            <label>
-              <span>Inicio do edital</span>
-              <input type="datetime-local" name="examStartAt" required>
-            </label>
-            <label>
-              <span>Fim do edital</span>
-              <input type="datetime-local" name="examEndAt" required>
-            </label>
-            <label>
-              <span>Nota minima (%)</span>
-              <input type="number" name="minPerformancePercent" min="0" max="100" step="1" required>
-            </label>
-            <label>
-              <span>Duracao minima do form (segundos)</span>
-              <input type="number" name="minFormDurationSec" min="0" max="3600" step="1" required>
-            </label>
-            <label class="full">
-              <span>Usuarios Discord autorizados (separados por virgula)</span>
-              <input type="text" name="discordAllowedUsers" placeholder="mudinhoxy, titaniabrjv, yoursalf_.7">
-            </label>
-            <div class="config-status" id="configStatus"></div>
-            <div class="config-actions">
-              <button type="submit" class="primary-button">Salvar configuracoes</button>
-              <button type="button" id="reloadConfigButton" class="secondary-button">Recarregar</button>
+        <nav class="admin-tabs" id="adminTabs" aria-label="Categorias do painel">
+          <button class="admin-tab active" type="button" data-tab="overview">Visao geral</button>
+          <button class="admin-tab" type="button" data-tab="candidates">Candidatos</button>
+          <button class="admin-tab" type="button" data-tab="audit">Auditoria</button>
+        </nav>
+
+        <div class="admin-tab-panel" id="tab-overview">
+          <div class="summary-grid" id="summaryGrid"></div>
+          <details class="config-panel" id="configPanel">
+            <summary>Configuracoes do edital</summary>
+            <form id="configForm" class="config-form">
+              <label>
+                <span>Inicio do edital</span>
+                <input type="datetime-local" name="examStartAt" required>
+              </label>
+              <label>
+                <span>Fim do edital</span>
+                <input type="datetime-local" name="examEndAt" required>
+              </label>
+              <label>
+                <span>Nota minima (%)</span>
+                <input type="number" name="minPerformancePercent" min="0" max="100" step="1" required>
+              </label>
+              <label>
+                <span>Duracao minima do form (segundos)</span>
+                <input type="number" name="minFormDurationSec" min="0" max="3600" step="1" required>
+              </label>
+              <label class="full">
+                <span>Usuarios Discord autorizados (separados por virgula)</span>
+                <input type="text" name="discordAllowedUsers" placeholder="mudinhoxy, titaniabrjv, yoursalf_.7">
+              </label>
+              <div class="config-status" id="configStatus"></div>
+              <div class="config-actions">
+                <button type="submit" class="primary-button">Salvar configuracoes</button>
+                <button type="button" id="reloadConfigButton" class="secondary-button">Recarregar</button>
+              </div>
+            </form>
+          </details>
+        </div>
+
+        <div class="admin-tab-panel hidden" id="tab-candidates">
+          <div class="dashboard-layout">
+            <div class="submission-list">
+              <div class="panel-title">
+                <h3>Envios</h3>
+                <button class="danger-button" type="button" id="clearSubmissionsButton">Limpar envios</button>
+              </div>
+              <div class="filter-row">
+                <label>
+                  <span>Buscar</span>
+                  <input id="searchInput" type="search" placeholder="Discord ou Roblox">
+                </label>
+                <label>
+                  <span>Filtro</span>
+                  <select id="riskFilter">
+                    <option value="all">Todos</option>
+                    <option value="high">Maior risco de IA</option>
+                    <option value="review">Em analise</option>
+                    <option value="approved">Aprovados</option>
+                    <option value="rejected">Reprovados</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Ordenar</span>
+                  <select id="sortBy">
+                    <option value="date">Mais recentes</option>
+                    <option value="score">Maior % objetivas</option>
+                    <option value="risk">Maior risco IA</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Desde</span>
+                  <input id="dateFrom" type="date">
+                </label>
+                <label>
+                  <span>Ate</span>
+                  <input id="dateTo" type="date">
+                </label>
+              </div>
+              <div id="submissionList"></div>
             </div>
-          </form>
-        </details>
-        <div class="summary-grid" id="summaryGrid"></div>
-        <div class="dashboard-layout">
-          <div class="submission-list">
-            <div class="panel-title">
-              <h3>Envios</h3>
-              <button class="danger-button" type="button" id="clearSubmissionsButton">Limpar envios</button>
-            </div>
-            <div class="filter-row">
-              <label>
-                <span>Buscar</span>
-                <input id="searchInput" type="search" placeholder="Discord ou Roblox">
-              </label>
-              <label>
-                <span>Filtro</span>
-                <select id="riskFilter">
-                  <option value="all">Todos</option>
-                  <option value="high">Maior risco de IA</option>
-                  <option value="review">Em analise</option>
-                  <option value="approved">Aprovados</option>
-                  <option value="rejected">Reprovados</option>
-                </select>
-              </label>
-              <label>
-                <span>Ordenar</span>
-                <select id="sortBy">
-                  <option value="date">Mais recentes</option>
-                  <option value="score">Maior % objetivas</option>
-                  <option value="risk">Maior risco IA</option>
-                </select>
-              </label>
-              <label>
-                <span>Desde</span>
-                <input id="dateFrom" type="date">
-              </label>
-              <label>
-                <span>Ate</span>
-                <input id="dateTo" type="date">
-              </label>
-            </div>
-            <div id="submissionList"></div>
+            <article class="submission-detail" id="submissionDetail">
+              <div class="empty-state">Selecione um candidato para ver a analise.</div>
+            </article>
           </div>
-          <article class="submission-detail" id="submissionDetail">
-            <div class="empty-state">Selecione um candidato para ver a analise.</div>
-          </article>
+        </div>
+
+        <div class="admin-tab-panel hidden" id="tab-audit">
+          <div class="panel-title">
+            <h3>Log de auditoria</h3>
+            <button class="secondary-button" type="button" id="reloadAuditButton">Recarregar</button>
+          </div>
+          <div id="auditList" class="audit-list"></div>
         </div>
       </div>
     </section>

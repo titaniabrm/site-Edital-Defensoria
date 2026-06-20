@@ -634,7 +634,66 @@ async function saveConfig(event) {
   }
 }
 
+function switchAdminTab(tabName) {
+  document.querySelectorAll(".admin-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll(".admin-tab-panel").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.id !== `tab-${tabName}`);
+  });
+  if (tabName === "audit") loadAuditLog();
+}
+
+function auditActionLabel(action) {
+  const labels = {
+    "login.pin": "Login com senha",
+    "discord.login": "Login Discord",
+    "discord.login.admin": "Login Discord (admin)",
+    "discord.login.denied": "Login Discord negado",
+    "config.update": "Configuracao alterada",
+    "submission.status": "Status de candidato alterado",
+    "submission.reviewer": "Revisor atribuido",
+    "submissions.clear": "Envios apagados",
+    "backup.run": "Backup automatico executado"
+  };
+  return labels[action] || action;
+}
+
+async function loadAuditLog() {
+  const list = document.querySelector("#auditList");
+  if (!list) return;
+  list.innerHTML = `<div class="empty-state">Carregando...</div>`;
+  try {
+    const response = await api("/api/admin/audit?limit=200");
+    if (!response.ok) throw new Error("Falha ao carregar auditoria.");
+    const entries = await response.json();
+    if (!entries.length) {
+      list.innerHTML = `<div class="empty-state">Nenhuma acao registrada ainda.</div>`;
+      return;
+    }
+    list.innerHTML = entries.map((entry) => `
+      <div class="audit-item">
+        <div class="audit-item-head">
+          <strong>${escapeHtml(auditActionLabel(entry.action))}</strong>
+          <span class="pill">${formatDate(entry.at)}</span>
+        </div>
+        <div class="audit-item-meta">
+          <span>por <strong>${escapeHtml(entry.actor || "?")}</strong></span>
+          ${entry.target ? `<span>em <code>${escapeHtml(String(entry.target).slice(0, 12))}</code></span>` : ""}
+          ${entry.meta ? `<span>${escapeHtml(JSON.stringify(entry.meta))}</span>` : ""}
+        </div>
+      </div>
+    `).join("");
+  } catch (error) {
+    list.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
+  }
+}
+
 function bindEvents() {
+  document.querySelectorAll(".admin-tab").forEach((btn) => {
+    btn.addEventListener("click", () => switchAdminTab(btn.dataset.tab));
+  });
+  document.querySelector("#reloadAuditButton")?.addEventListener("click", loadAuditLog);
   document.querySelector("#configForm")?.addEventListener("submit", saveConfig);
   document.querySelector("#reloadConfigButton")?.addEventListener("click", loadConfig);
   document.querySelector("#discordLoginButton")?.addEventListener("click", () => {

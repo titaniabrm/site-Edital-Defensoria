@@ -62,7 +62,7 @@
           <li data-section="objetivas"><span>Objetivas</span><strong>0/15</strong></li>
           <li data-section="subjetivas"><span>Subjetivas</span><strong>0/15</strong></li>
         </ul>
-        <p id="draftStatus">Rascunho nao salvo nesta sessao.</p>
+        <p id="draftStatus">Suas respostas sao salvas automaticamente.</p>
         <p class="time-elapsed" id="timeElapsed" aria-live="polite">Tempo: 00:00</p>
       </aside>
     </section>
@@ -150,7 +150,6 @@
         </div>
         <div class="submit-actions">
           <button class="ghost-button" type="button" id="jumpPendingButton">Ir para proxima pendente</button>
-          <button class="secondary-button" type="button" id="saveDraftButton">Salvar rascunho</button>
           <button class="secondary-button" type="button" id="clearDraftButton">Limpar rascunho</button>
           <button class="primary-button" type="submit">Enviar respostas</button>
         </div>
@@ -177,10 +176,14 @@
     <section id="confirmation" class="confirmation hidden candidate-only" aria-live="polite">
       <div>
         <p class="eyebrow">Envio registrado</p>
-        <h2>Respostas salvas para avaliacao</h2>
+        <h2 id="confirmationTitle">Respostas salvas para avaliacao</h2>
         <p id="confirmationText"></p>
+        <span class="pill" id="myStatusPill"></span>
       </div>
-      <button class="secondary-button" type="button" id="newSubmissionButton">Novo candidato</button>
+      <details class="modal-review" open>
+        <summary>Ver minhas respostas enviadas</summary>
+        <div id="myAnswersList" class="modal-review-list"></div>
+      </details>
     </section>
 
     <nav class="question-index candidate-only hidden" id="questionIndex" aria-label="Indice de questoes"></nav>

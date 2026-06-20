@@ -359,7 +359,7 @@ function collectDraftObject() {
 function saveDraft() {
   const draft = collectDraftObject();
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  draftStatus.textContent = `Rascunho salvo as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`;
+  draftStatus.textContent = `Salvo automaticamente as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`;
   // Sincroniza com o servidor (best-effort, nao bloqueia).
   fetch("/api/draft", {
     method: "POST",
@@ -577,6 +577,53 @@ function validateForm() {
   return valid;
 }
 
+function statusLabelFor(status) {
+  if (status === "Aprovado") return { text: "Aprovado", className: "good" };
+  if (status === "Reprovado") return { text: "Reprovado", className: "bad" };
+  return { text: "Em analise", className: "warn" };
+}
+
+function renderMyAnswersList(objectiveItems, subjectiveItems) {
+  const objRows = objectiveItems.map((item, i) => `
+    <div class="review-item">
+      <strong>${i + 1}.</strong> ${escapeHtml(item.question)}<br>
+      <span>${escapeHtml(item.selectedText || "Nao respondida")}</span>
+    </div>
+  `).join("");
+  const subjRows = subjectiveItems.map((item, i) => `
+    <div class="review-item">
+      <strong>${objectiveItems.length + i + 1}.</strong> ${escapeHtml(item.question)}<br>
+      <span>${escapeHtml(item.answer || "Nao respondida")}</span>
+    </div>
+  `).join("");
+  return objRows + subjRows;
+}
+
+function showOnlyMyResults() {
+  document.querySelectorAll(".candidate-only").forEach((el) => {
+    if (el.id !== "confirmation") el.classList.add("hidden");
+  });
+}
+
+async function loadMyResults() {
+  try {
+    const res = await fetch("/api/my-submission", { credentials: "same-origin" });
+    const data = await res.json();
+    if (!data.found) return;
+    showOnlyMyResults();
+    const status = statusLabelFor(data.status);
+    document.querySelector("#confirmationTitle").textContent = "Sua avaliacao ja foi registrada";
+    confirmationText.textContent = `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Pontuacao objetiva: ${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%).`;
+    const pill = document.querySelector("#myStatusPill");
+    pill.textContent = status.text;
+    pill.className = `pill ${status.className}`;
+    document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(data.objectiveAnswers, data.subjectiveAnswers);
+    confirmation.classList.remove("hidden");
+  } catch {
+    toast("Nao foi possivel carregar suas respostas.", "error");
+  }
+}
+
 async function submitForm() {
   if (!validateForm()) {
     toast("Preencha todas as questoes antes de enviar.", "error", "Faltam respostas");
@@ -593,6 +640,17 @@ async function submitForm() {
 
   try {
     const submission = collectFormData();
+    const objectiveItems = objectiveQuestions.map((q) => {
+      const sel = form.querySelector(`[name="q${q.id}"]:checked`);
+      const label = sel ? sel.closest(".option-row")?.querySelector("span")?.textContent?.trim() : null;
+      return { question: q.text, selectedText: label || "" };
+    });
+    const formDataForReview = new FormData(form);
+    const subjectiveItems = subjectiveQuestions.map((q) => ({
+      question: q.text,
+      answer: String(formDataForReview.get(`q${q.id}`) || "").trim()
+    }));
+
     const response = await fetch("/api/submissions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -605,10 +663,16 @@ async function submitForm() {
     localStorage.removeItem(DRAFT_KEY);
     localStorage.setItem(SUBMITTED_KEY, result.id || "1");
     dirtyDraft = false;
+    showOnlyMyResults();
     confirmation.classList.remove("hidden");
     const greetingName = currentSession.username ? `@${currentSession.username}` : "Candidato";
-    confirmationText.textContent = `${greetingName}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%). Analise IA: ${result.aiRiskAverage}% de risco medio.`;
-    form.querySelectorAll("input, textarea, button[type='submit']").forEach((el) => { el.disabled = true; });
+    const status = statusLabelFor(result.status);
+    document.querySelector("#confirmationTitle").textContent = "Respostas salvas para avaliacao";
+    confirmationText.textContent = `${greetingName}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%).`;
+    const pill = document.querySelector("#myStatusPill");
+    pill.textContent = status.text;
+    pill.className = `pill ${status.className}`;
+    document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(objectiveItems, subjectiveItems);
     confirmation.scrollIntoView({ behavior: "smooth", block: "center" });
     toast("Avaliacao enviada.", "success", "Tudo certo");
   } catch (error) {
@@ -661,19 +725,7 @@ function bindEvents() {
     }
   });
 
-  document.querySelector("#saveDraftButton").addEventListener("click", () => {
-    saveDraft();
-    dirtyDraft = false;
-    toast("Rascunho salvo.", "success");
-  });
   document.querySelector("#clearDraftButton")?.addEventListener("click", clearDraft);
-  document.querySelector("#newSubmissionButton").addEventListener("click", () => {
-    form.reset();
-    updateCounters();
-    updateProgress();
-    confirmation.classList.add("hidden");
-    document.querySelector("#formulario").scrollIntoView({ behavior: "smooth" });
-  });
 
   document.querySelectorAll("[data-scroll-target]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -773,6 +825,12 @@ async function boot() {
     toast(error.message, "error", "Carregar edital");
     return;
   }
+
+  if (serverAlreadySubmitted) {
+    await loadMyResults();
+    return;
+  }
+
   renderQuestions();
   loadDraft();
   await loadServerDraftIfNewer();
@@ -782,23 +840,18 @@ async function boot() {
   tickClock();
   setInterval(tickClock, 1000);
 
-  if (serverAlreadySubmitted) {
-    toast("Voce ja enviou esta avaliacao.", "info");
-    form.querySelectorAll("input, textarea, button[type='submit']").forEach((el) => { el.disabled = true; });
-  } else {
-    startDevtoolsWatch();
-    // Heartbeat de presenca (candidato preenchendo agora).
-    const heartbeat = () => {
-      if (localStorage.getItem(SUBMITTED_KEY)) return;
-      fetch("/api/presence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId })
-      }).catch(() => {});
-    };
-    heartbeat();
-    setInterval(heartbeat, 20000);
-  }
+  startDevtoolsWatch();
+  // Heartbeat de presenca (candidato preenchendo agora).
+  const heartbeat = () => {
+    if (localStorage.getItem(SUBMITTED_KEY)) return;
+    fetch("/api/presence", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId })
+    }).catch(() => {});
+  };
+  heartbeat();
+  setInterval(heartbeat, 20000);
 }
 
 boot();

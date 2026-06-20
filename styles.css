@@ -1300,3 +1300,87 @@ footer {
 @media (max-width: 640px) {
   .compare-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- Categorias (abas) do painel admin ---- */
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.admin-tab {
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+
+.admin-tab:hover {
+  color: var(--navy);
+}
+
+.admin-tab.active {
+  color: var(--navy);
+  border-bottom-color: var(--gold);
+}
+
+[data-theme="dark"] .admin-tab.active,
+[data-theme="dark"] .admin-tab:hover {
+  color: #ffffff;
+}
+
+.admin-tab-panel {
+  animation: admin-tab-fade 150ms ease;
+}
+
+@keyframes admin-tab-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.audit-item {
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.audit-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.audit-item-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.audit-item-meta code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .audit-item-meta code {
+  background: rgba(255, 255, 255, 0.1);
+}

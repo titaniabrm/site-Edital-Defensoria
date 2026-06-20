@@ -1282,6 +1282,44 @@ app.get("/api/exam", requireSession, async (req, res) => {
   });
 });
 
+// Permite que o proprio candidato veja as respostas que enviou e o status
+// atual, mesmo depois de ser aprovado/reprovado - nunca expoe risco de IA
+// ou a resposta correta das objetivas (isso e so para a banca).
+app.get("/api/my-submission", requireSession, async (req, res) => {
+  try {
+    const submission = await findSubmissionForSession(req.session);
+    if (!submission) {
+      res.json({ found: false });
+      return;
+    }
+    res.json({
+      found: true,
+      submittedAt: submission.submittedAt,
+      status: submission.status,
+      performancePercent: submission.performancePercent,
+      objectiveScore: submission.objectiveScore,
+      objectiveTotal: submission.objectiveTotal,
+      identity: {
+        roblox: submission.identity?.roblox || "",
+        tempoEb: submission.identity?.tempoEb || ""
+      },
+      objectiveAnswers: (submission.objectiveAnswers || []).map((a) => ({
+        id: a.id,
+        question: a.question,
+        selectedText: a.selectedText
+      })),
+      subjectiveAnswers: (submission.subjectiveAnswers || []).map((a) => ({
+        id: a.id,
+        question: a.question,
+        answer: a.answer
+      }))
+    });
+  } catch (error) {
+    logger.warn({ err: error.message }, "my-submission.failed");
+    res.status(500).json({ error: "Erro ao carregar suas respostas." });
+  }
+});
+
 app.get("/api/config", async (req, res) => {
   await ensureConfig();
   res.json({
