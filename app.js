@@ -33,7 +33,9 @@ function applySessionUI() {
   const discordLoginButton = document.querySelector("#discordLoginButton");
   const logoutButton = document.querySelector("#logoutButton");
   const painelButton = document.querySelector("#painelButton");
-  const sessionLabel = document.querySelector("#sessionLabel");
+  const userBadge = document.querySelector("#userBadge");
+  const userAvatar = document.querySelector("#userAvatar");
+  const userName = document.querySelector("#userName");
   const loggedDiscordLabel = document.querySelector("#loggedDiscordLabel");
 
   if (currentSession.authenticated) {
@@ -41,8 +43,11 @@ function applySessionUI() {
     candidateSections.forEach((el) => el.classList.remove("hidden"));
     discordLoginButton?.classList.add("hidden");
     logoutButton?.classList.remove("hidden");
-    sessionLabel?.classList.remove("hidden");
-    if (sessionLabel) sessionLabel.textContent = `Logado como @${currentSession.username}`;
+    if (userBadge) {
+      userBadge.classList.remove("hidden");
+      if (userAvatar && currentSession.avatarUrl) userAvatar.src = currentSession.avatarUrl;
+      if (userName) userName.textContent = `@${currentSession.username || ""}`;
+    }
     if (loggedDiscordLabel) loggedDiscordLabel.textContent = `@${currentSession.username}`;
     painelButton?.classList.toggle("hidden", !currentSession.isAdmin);
   } else {
@@ -50,7 +55,7 @@ function applySessionUI() {
     candidateSections.forEach((el) => el.classList.add("hidden"));
     discordLoginButton?.classList.remove("hidden");
     logoutButton?.classList.add("hidden");
-    sessionLabel?.classList.add("hidden");
+    userBadge?.classList.add("hidden");
     painelButton?.classList.add("hidden");
   }
 }
@@ -612,8 +617,14 @@ async function loadMyResults() {
     if (!data.found) return;
     showOnlyMyResults();
     const status = statusLabelFor(data.status);
-    document.querySelector("#confirmationTitle").textContent = "Sua avaliacao ja foi registrada";
-    confirmationText.textContent = `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Pontuacao objetiva: ${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%).`;
+    document.querySelector("#confirmationTitle").textContent = data.decided
+      ? "Resultado da sua avaliacao"
+      : "Avaliacao em analise pela banca";
+    // So mostra pontuacao depois que o admin decidiu (Aprovado/Reprovado).
+    // Enquanto "Em analise", mantemos o candidato sem ver nota nem desempenho.
+    confirmationText.textContent = data.decided
+      ? `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Pontuacao objetiva: ${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%).`
+      : `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Aguarde a analise da banca - o resultado aparece aqui quando estiver pronto.`;
     const pill = document.querySelector("#myStatusPill");
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
@@ -666,9 +677,9 @@ async function submitForm() {
     showOnlyMyResults();
     confirmation.classList.remove("hidden");
     const greetingName = currentSession.username ? `@${currentSession.username}` : "Candidato";
-    const status = statusLabelFor(result.status);
-    document.querySelector("#confirmationTitle").textContent = "Respostas salvas para avaliacao";
-    confirmationText.textContent = `${greetingName}, sua avaliacao foi registrada. Pontuacao objetiva: ${result.objectiveScore}/${result.objectiveTotal} (${result.performancePercent}%).`;
+    const status = statusLabelFor(result.status || "Em analise");
+    document.querySelector("#confirmationTitle").textContent = "Avaliacao em analise pela banca";
+    confirmationText.textContent = `${greetingName}, sua avaliacao foi registrada. Aguarde a analise da banca - o resultado aparece aqui quando estiver pronto.`;
     const pill = document.querySelector("#myStatusPill");
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
@@ -828,6 +839,15 @@ async function boot() {
 
   if (serverAlreadySubmitted) {
     await loadMyResults();
+    return;
+  }
+
+  // Edital fechado: o servidor nao manda as perguntas pra candidato comum,
+  // entao nem rendereriza o formulario - so o banner de "fora do periodo".
+  if (!objectiveQuestions.length) {
+    document.querySelectorAll(".candidate-only").forEach((el) => {
+      if (el.id !== "examClosedBanner") el.classList.add("hidden");
+    });
     return;
   }
 

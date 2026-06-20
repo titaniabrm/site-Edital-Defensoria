@@ -40,7 +40,6 @@ const summaryGrid = document.querySelector("#summaryGrid");
 const submissionList = document.querySelector("#submissionList");
 const submissionDetail = document.querySelector("#submissionDetail");
 const riskFilter = document.querySelector("#riskFilter");
-const logoutAdminButton = document.querySelector("#logoutAdminButton");
 const searchInput = document.querySelector("#searchInput");
 const sortBy = document.querySelector("#sortBy");
 
@@ -197,6 +196,7 @@ function renderSubmissionList(submissions) {
           <span class="pill ${status.className}">${status.text}</span>
           <span class="pill ${risk.className}">${risk.text}</span>
           ${submission.devtoolsOpened ? `<span class="pill bad">DevTools</span>` : ""}
+          ${submission.fingerprintMatches?.length ? `<span class="pill bad">⚠ Mesmo dispositivo</span>` : ""}
           ${submission.reviewer ? `<span class="pill">👤 ${escapeHtml(submission.reviewer)}</span>` : ""}
           <span class="pill">${formatDate(submission.submittedAt)}</span>
         </div>
@@ -319,10 +319,15 @@ function renderSubmissionDetail(submission) {
       <div class="detail-box"><span>Subjetivas com cola</span><strong>${similarity.flagged || 0}</strong></div>
       <div class="detail-box"><span>UA hash</span><strong>${escapeHtml((submission.uaHash || "-").slice(0, 12))}</strong></div>
       <div class="detail-box"><span>IP hash</span><strong>${escapeHtml((submission.ipHash || "-").slice(0, 12))}</strong></div>
-      <div class="detail-box"><span>Fingerprint</span><strong>${escapeHtml(submission.fingerprint || "-")}</strong></div>
+      <div class="detail-box ${submission.fingerprintMatches?.length ? "alert" : ""}">
+        <span>Fingerprint</span>
+        <strong>${escapeHtml(submission.fingerprint || "-")}</strong>
+        ${submission.fingerprintMatches?.length ? `<span class="alert-text">⚠ Mesmo dispositivo de ${submission.fingerprintMatches.length} outro(s): ${submission.fingerprintMatches.map((m) => "@" + escapeHtml(m)).join(", ")}</span>` : ""}
+      </div>
       <div class="detail-box ${submission.devtoolsOpened ? "alert" : ""}"><span>DevTools</span><strong>${submission.devtoolsOpened ? "ABERTO" : "nao"}</strong></div>
       <div class="detail-box"><span>Voltas na revisao</span><strong>${submission.reviewCount || 0}</strong></div>
       <div class="detail-box"><span>Maior inatividade</span><strong>${Math.round((submission.maxIdleMs || 0) / 1000)}s</strong></div>
+      ${submission.autoSuggestedStatus ? `<div class="detail-box"><span>Sugestao automatica</span><strong>${escapeHtml(submission.autoSuggestedStatus)}</strong></div>` : ""}
     </div>
     ${similarityRows ? `<div class="answer-review"><span>Subjetivas mais parecidas com outro candidato</span><ul class="flag-list">${similarityRows}</ul></div>` : ""}
     ${history ? `<div class="answer-review"><span>Historico de status</span><ul class="history-list">${history}</ul></div>` : ""}
@@ -331,6 +336,14 @@ function renderSubmissionDetail(submission) {
       <span class="reviewer-row">
         <input id="reviewerInput" type="text" value="${escapeHtml(submission.reviewer || "")}" placeholder="Nome do admin">
         <button class="secondary-button" type="button" data-save-reviewer="${submission.id}">Atribuir</button>
+      </span>
+    </label>
+    <label class="admin-note">
+      <span>Nota manual do revisor (0 a 10)</span>
+      <span class="reviewer-row">
+        <input id="manualGradeInput" type="number" min="0" max="10" step="0.1" value="${submission.manualGrade ?? ""}" placeholder="Ex.: 8.5">
+        <input id="manualGradeNoteInput" type="text" value="${escapeHtml(submission.manualGradeNote || "")}" placeholder="Comentario do revisor (opcional)">
+        <button class="secondary-button" type="button" data-save-grade="${submission.id}">Salvar nota</button>
       </span>
     </label>
     <label class="admin-note">
@@ -376,9 +389,30 @@ function syncStatusChipsFromFilter() {
   });
 }
 
+// Cruza fingerprints entre todas as submissoes carregadas e anota em
+// cada uma quais outros candidatos compartilham o mesmo dispositivo.
+// Sinal forte de tentativa de multipla conta na mesma maquina.
+function annotateFingerprintMatches(submissions) {
+  const byFp = new Map();
+  submissions.forEach((s) => {
+    const fp = s.fingerprint;
+    if (!fp || fp === "-") return;
+    if (!byFp.has(fp)) byFp.set(fp, []);
+    byFp.get(fp).push(s);
+  });
+  submissions.forEach((s) => {
+    const same = byFp.get(s.fingerprint) || [];
+    s.fingerprintMatches = same
+      .filter((other) => other.id !== s.id)
+      .map((other) => other.identity?.discord || "?")
+      .slice(0, 5);
+  });
+}
+
 function renderReview() {
   if (!reviewUnlocked) return;
   const allSubmissions = [...loadedSubmissions].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+  annotateFingerprintMatches(allSubmissions);
   const filteredSubmissions = getFilteredSubmissions();
   renderSummary(allSubmissions);
   updateStatusChipCounts(allSubmissions);
@@ -470,7 +504,6 @@ function enterReviewMode() {
   reviewUnlocked = true;
   reviewLocked.classList.add("hidden");
   reviewDashboard.classList.remove("hidden");
-  logoutAdminButton.disabled = false;
   refreshActiveNow();
   loadMetricsChart();
   if (!activePollTimer) {
@@ -569,6 +602,30 @@ async function handleSubmissionDetailClick(event) {
     }
     return;
   }
+  const gradeBtn = event.target.closest("[data-save-grade]");
+  if (gradeBtn) {
+    const id = gradeBtn.dataset.saveGrade;
+    const gradeRaw = document.querySelector("#manualGradeInput").value.trim();
+    const note = document.querySelector("#manualGradeNoteInput").value.trim();
+    try {
+      const response = await api(`/api/admin/submissions/${id}/grade`, {
+        method: "PATCH",
+        body: JSON.stringify({ grade: gradeRaw === "" ? null : Number(gradeRaw), note })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Falha ao salvar nota.");
+      const target = loadedSubmissions.find((item) => item.id === id);
+      if (target) {
+        target.manualGrade = data.grade;
+        target.manualGradeNote = data.note;
+      }
+      renderReview();
+      toast("Nota salva.", "success");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+    return;
+  }
   const compareBtn = event.target.closest("[data-compare]");
   if (compareBtn) {
     openCompareModal(compareBtn.dataset.self, compareBtn.dataset.compare, Number(compareBtn.dataset.qid));
@@ -618,18 +675,6 @@ function bindTheme() {
   });
 }
 
-async function checkDiscordStatus() {
-  try {
-    const res = await fetch("/api/admin/discord/status", { credentials: "same-origin" });
-    const data = await res.json().catch(() => ({}));
-    if (!data.configured) {
-      toast("Login Discord nao configurado no servidor.", "error", "Atencao");
-    }
-  } catch {
-    // Servidor offline; mensagem aparece quando clicar
-  }
-}
-
 function clearLoginQuery() {
   if (window.location.search) window.history.replaceState({}, "", window.location.pathname);
 }
@@ -647,19 +692,37 @@ async function bootstrapFromCallback() {
   }
 }
 
-// Sessao via cookie e a mesma do edital: se quem entrou ja e admin
-// autorizado, o painel abre direto, sem precisar logar de novo.
+function renderUserBadge(data) {
+  const badge = document.querySelector("#userBadge");
+  if (!badge) return;
+  if (!data?.authenticated) {
+    badge.classList.add("hidden");
+    return;
+  }
+  const avatar = document.querySelector("#userAvatar");
+  const name = document.querySelector("#userName");
+  if (avatar && data.avatarUrl) avatar.src = data.avatarUrl;
+  if (name) name.textContent = `@${data.username || ""}`;
+  badge.classList.remove("hidden");
+}
+
+// Sessao via cookie e a mesma do edital. Como agora o login acontece no
+// proprio site do edital, aqui so checamos o estado: se nao tem sessao ou
+// nao e admin, mostra mensagem orientando voltar pro edital.
 async function checkSessionAndBoot() {
   try {
     const res = await fetch("/api/session", { credentials: "same-origin" });
     const data = await res.json().catch(() => ({}));
+    renderUserBadge(data);
     if (data.authenticated && data.isAdmin) {
       await loadAdminSubmissions();
       enterReviewMode();
       await loadConfig();
       toast(`Bem-vindo, @${data.username}.`, "success", "Painel liberado");
     } else if (data.authenticated && !data.isAdmin) {
-      reviewLocked.textContent = `Voce esta logado como @${data.username}, mas essa conta nao tem permissao de administrador.`;
+      reviewLocked.innerHTML = `Voce esta logado como <strong>@${escapeHtml(data.username)}</strong>, mas essa conta nao tem permissao de administrador. <a href="/">Voltar ao edital</a>`;
+    } else {
+      reviewLocked.innerHTML = 'Voce nao esta logado. <a href="/">Entre com Discord pelo edital</a> para acessar o painel.';
     }
   } catch (error) {
     toast(error.message || "Falha ao verificar sessao.", "error");
@@ -686,6 +749,7 @@ async function loadConfig() {
     form.elements.examEndAt.value = toLocalDatetimeValue(cfg.examEndAt);
     form.elements.minPerformancePercent.value = cfg.minPerformancePercent;
     form.elements.minFormDurationSec.value = Math.round((cfg.minFormDurationMs || 0) / 1000);
+    if (form.elements.maxApproved) form.elements.maxApproved.value = cfg.maxApproved || 0;
     form.elements.discordAllowedUsers.value = (cfg.discordAllowedUsers || []).join(", ");
     if (status) status.textContent = `Edital ${cfg.isOpen ? "ABERTO" : "FECHADO"} agora. Servidor: ${new Date(cfg.serverNow).toLocaleString("pt-BR")}`;
   } catch (error) {
@@ -702,6 +766,7 @@ async function saveConfig(event) {
     examEndAt: new Date(form.elements.examEndAt.value).toISOString(),
     minPerformancePercent: Number(form.elements.minPerformancePercent.value),
     minFormDurationMs: Number(form.elements.minFormDurationSec.value) * 1000,
+    maxApproved: form.elements.maxApproved ? Number(form.elements.maxApproved.value) : 0,
     discordAllowedUsers: form.elements.discordAllowedUsers.value
       .split(",")
       .map((s) => s.trim())
@@ -781,10 +846,6 @@ function bindEvents() {
   document.querySelector("#reloadAuditButton")?.addEventListener("click", loadAuditLog);
   document.querySelector("#configForm")?.addEventListener("submit", saveConfig);
   document.querySelector("#reloadConfigButton")?.addEventListener("click", loadConfig);
-  document.querySelector("#discordLoginButton")?.addEventListener("click", () => {
-    const returnTo = window.location.pathname;
-    window.location.href = `/api/admin/discord/start?return_to=${encodeURIComponent(returnTo)}`;
-  });
   document.querySelector("#clearSubmissionsButton")?.addEventListener("click", async () => {
     const sure = confirm(
       "ATENCAO: isso vai apagar TODOS os envios salvos e resetar o edital - " +
@@ -834,23 +895,8 @@ function bindEvents() {
     syncStatusChipsFromFilter();
     renderReview();
   });
-  logoutAdminButton?.addEventListener("click", async () => {
-    await api("/api/admin/logout", { method: "POST" }).catch(() => {});
-    reviewUnlocked = false;
-    reviewDashboard.classList.add("hidden");
-    reviewLocked.classList.remove("hidden");
-    reviewLocked.textContent = "Painel bloqueado. Apenas usuarios Discord autorizados podem acessar.";
-    logoutAdminButton.disabled = true;
-    if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
-    if (sessionRefreshTimer) { clearInterval(sessionRefreshTimer); sessionRefreshTimer = null; }
-    newSubmissionsSinceView = 0;
-    lastKnownSubmissionCount = null;
-    updateTabTitleBadge();
-    toast("Sessao encerrada.", "success");
-  });
 }
 
 bindTheme();
 bindEvents();
-checkDiscordStatus();
 bootstrapFromCallback().then(checkSessionAndBoot);

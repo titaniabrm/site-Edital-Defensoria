@@ -18,6 +18,10 @@
     </div>
     <nav class="top-actions" aria-label="Atalhos">
       <span id="activeNow" class="active-now hidden" title="Candidatos preenchendo agora"></span>
+      <div id="userBadge" class="user-badge hidden" aria-label="Usuario logado">
+        <img id="userAvatar" alt="" width="32" height="32">
+        <span id="userName"></span>
+      </div>
       <a class="ghost-button" href="/">Voltar ao edital</a>
       <button class="ghost-button" type="button" id="themeToggle">Tema escuro</button>
     </nav>
@@ -26,24 +30,19 @@
   <main>
     <section id="revisao" class="review-shell" aria-labelledby="revisaoTitulo">
       <div class="section-heading">
-        <p class="eyebrow">Acesso restrito</p>
-        <h2 id="revisaoTitulo">Painel administrativo</h2>
-        <p>Entre com a mesma conta Discord usada no edital. So usuarios autorizados visualizam o painel.</p>
-      </div>
-
-      <div class="review-controls">
-        <button class="primary-button" type="button" id="discordLoginButton">Entrar com Discord</button>
-        <button class="secondary-button" type="button" id="logoutAdminButton" disabled>Sair</button>
+        <p class="eyebrow">Painel administrativo</p>
+        <h2 id="revisaoTitulo">Defensoria-Geral do Exercito</h2>
       </div>
 
       <div id="reviewLocked" class="empty-state">
-        Painel bloqueado. Apenas usuarios Discord autorizados podem acessar.
+        Verificando sua sessao Discord...
       </div>
 
       <div id="reviewDashboard" class="review-dashboard hidden">
         <nav class="admin-tabs" id="adminTabs" aria-label="Categorias do painel">
           <button class="admin-tab active" type="button" data-tab="overview">Visao geral</button>
           <button class="admin-tab" type="button" data-tab="candidates">Candidatos</button>
+          <button class="admin-tab" type="button" data-tab="config">Configuracoes</button>
           <button class="admin-tab" type="button" data-tab="audit">Auditoria</button>
         </nav>
 
@@ -53,8 +52,11 @@
             <span>Envios por dia (todo o periodo)</span>
             <div id="timelineChart"><div class="empty-state">Carregando...</div></div>
           </div>
-          <details class="config-panel" id="configPanel">
-            <summary>Configuracoes do edital</summary>
+        </div>
+
+        <div class="admin-tab-panel hidden" id="tab-config">
+          <div class="config-panel-block">
+            <h3>Configuracoes do edital</h3>
             <form id="configForm" class="config-form">
               <label>
                 <span>Inicio do edital</span>
@@ -72,6 +74,10 @@
                 <span>Duracao minima do form (segundos)</span>
                 <input type="number" name="minFormDurationSec" min="0" max="3600" step="1" required>
               </label>
+              <label>
+                <span>Maximo de aprovados (0 = sem limite)</span>
+                <input type="number" name="maxApproved" min="0" max="100000" step="1" required>
+              </label>
               <label class="full">
                 <span>Usuarios Discord autorizados (separados por virgula)</span>
                 <input type="text" name="discordAllowedUsers" placeholder="mudinhoxy, titaniabrjv, yoursalf_.7">
@@ -82,7 +88,7 @@
                 <button type="button" id="reloadConfigButton" class="secondary-button">Recarregar</button>
               </div>
             </form>
-          </details>
+          </div>
         </div>
 
         <div class="admin-tab-panel hidden" id="tab-candidates">

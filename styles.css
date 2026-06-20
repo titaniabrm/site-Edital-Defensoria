@@ -1398,8 +1398,8 @@ footer {
 }
 
 .credits a {
-  color: var(--gold-2);
-  font-weight: 700;
+  color: #0015fb;
+  font-weight: 800;
   text-decoration: none;
 }
 
@@ -1408,7 +1408,7 @@ footer {
 }
 
 [data-theme="dark"] .credits a {
-  color: var(--gold);
+  color: #4d63ff;
 }
 
 /* ---- Chips de status (filtro rapido) no painel admin ---- */
@@ -1446,3 +1446,112 @@ footer {
 .status-chip.good.active { background: var(--success); border-color: var(--success); }
 .status-chip.bad.active { background: var(--danger); border-color: var(--danger); }
 .status-chip.warn.active { background: var(--warning); border-color: var(--warning); }
+
+/* ---- User badge (avatar + username Discord no topbar) ---- */
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff7df;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.user-badge img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(215, 173, 93, 0.5);
+  object-fit: cover;
+}
+
+/* ---- Aba de Configurações ---- */
+.config-panel-block {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 22px;
+}
+
+.config-panel-block h3 {
+  margin-top: 0;
+  color: var(--navy);
+}
+
+/* ---- Alertas no detail-box ---- */
+.detail-box .alert-text {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+/* ---- Responsivo mobile (<=560px) ---- */
+@media (max-width: 560px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 16px;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+  }
+
+  .user-badge {
+    font-size: 0.8rem;
+  }
+
+  .status-panel {
+    position: static;
+    min-height: auto;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    padding-top: 18px;
+  }
+
+  .hero-copy {
+    min-height: auto;
+    padding: 24px;
+  }
+
+  .rules-grid,
+  .field-grid,
+  .summary-grid,
+  .filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .question-index {
+    display: none;
+  }
+
+  .reviewer-row {
+    flex-direction: column;
+  }
+
+  .admin-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .admin-tab {
+    flex-shrink: 0;
+  }
+
+  footer {
+    flex-direction: column;
+    text-align: center;
+  }
+}

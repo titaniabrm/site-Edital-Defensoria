@@ -193,6 +193,11 @@ function getAllowedDiscord() {
   const list = runtimeConfig.discordAllowedUsers;
   return Array.isArray(list) && list.length ? list : DISCORD_ALLOWED_USERS;
 }
+// 0 = sem limite; numero positivo = teto de aprovados que o painel respeita.
+function getMaxApproved() {
+  const v = Number(runtimeConfig.maxApproved);
+  return Number.isFinite(v) && v >= 0 ? v : 0;
+}
 
 function withinExamWindow(now = new Date()) {
   const start = new Date(getExamStart());
@@ -327,6 +332,30 @@ async function notifyStatusChange(identity, status) {
   }
 }
 
+// Monitoramento externo simples: erros 5xx vao para o webhook Discord com
+// throttling (no maximo 1 alerta a cada 60s por endpoint) pra evitar spam.
+const errorReportThrottle = new Map();
+async function reportError(context, error) {
+  if (!DISCORD_WEBHOOK_URL) return;
+  const key = `${context.method || ""} ${context.path || ""}`.slice(0, 80);
+  const now = Date.now();
+  const last = errorReportThrottle.get(key) || 0;
+  if (now - last < 60_000) return;
+  errorReportThrottle.set(key, now);
+  try {
+    await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "Defensoria-Geral do Exercito - Monitor",
+        content: `🚨 Erro no servidor: \`${key}\`\n> ${String(error?.message || error).slice(0, 1500)}`
+      })
+    }).catch(() => {});
+  } catch {
+    // ignora falha do proprio reporter
+  }
+}
+
 const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false }
@@ -347,7 +376,7 @@ app.use((req, res, next) => {
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    "img-src 'self' data: https://cdn.discordapp.com",
     "connect-src 'self'",
     "font-src 'self'",
     "base-uri 'self'",
@@ -436,9 +465,9 @@ function signPayload(payload) {
   return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(payload).digest("hex");
 }
 
-function createSession({ discordId = null, username = "admin", isAdmin = false } = {}) {
+function createSession({ discordId = null, username = "admin", isAdmin = false, avatarUrl = null } = {}) {
   const exp = Date.now() + 1000 * 60 * 60 * 8;
-  const payload = Buffer.from(JSON.stringify({ discordId, username, isAdmin: Boolean(isAdmin), exp })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ discordId, username, isAdmin: Boolean(isAdmin), avatarUrl, exp })).toString("base64url");
   return `${payload}.${signPayload(payload)}`;
 }
 
@@ -984,7 +1013,10 @@ function toDbRow(submission) {
     fingerprint: submission.fingerprint || null,
     devtools_opened: Boolean(submission.devtoolsOpened),
     review_count: submission.reviewCount || 0,
-    max_idle_ms: submission.maxIdleMs || 0
+    max_idle_ms: submission.maxIdleMs || 0,
+    auto_suggested_status: submission.autoSuggestedStatus || null,
+    manual_grade: submission.manualGrade ?? null,
+    manual_grade_note: submission.manualGradeNote || ""
   };
 }
 
@@ -1017,7 +1049,10 @@ function fromDbRow(row) {
     fingerprint: row.fingerprint || null,
     devtoolsOpened: Boolean(row.devtools_opened),
     reviewCount: row.review_count || 0,
-    maxIdleMs: row.max_idle_ms || 0
+    maxIdleMs: row.max_idle_ms || 0,
+    autoSuggestedStatus: row.auto_suggested_status || null,
+    manualGrade: row.manual_grade === null || row.manual_grade === undefined ? null : Number(row.manual_grade),
+    manualGradeNote: row.manual_grade_note || ""
   };
 }
 
@@ -1142,6 +1177,31 @@ async function updateReviewer(id, reviewer) {
   submissions[index].reviewer = value;
   await writeLocalSubmissions(submissions);
   return value;
+}
+
+async function updateManualGrade(id, grade, note) {
+  let parsedGrade = null;
+  if (grade !== null && grade !== undefined && grade !== "") {
+    const n = Number(grade);
+    if (!Number.isFinite(n) || n < 0 || n > 10) throw new Error("Nota deve estar entre 0 e 10.");
+    parsedGrade = Math.round(n * 10) / 10;
+  }
+  const noteValue = String(note || "").slice(0, 1000);
+  if (supabase) {
+    const { error } = await supabase
+      .from("defensoria_submissions")
+      .update({ manual_grade: parsedGrade, manual_grade_note: noteValue })
+      .eq("id", id);
+    if (error) throw normalizeDatabaseError(error);
+    return { grade: parsedGrade, note: noteValue };
+  }
+  const submissions = await readLocalSubmissions();
+  const index = submissions.findIndex((submission) => submission.id === id);
+  if (index === -1) throw new Error("Candidato nao encontrado.");
+  submissions[index].manualGrade = parsedGrade;
+  submissions[index].manualGradeNote = noteValue;
+  await writeLocalSubmissions(submissions);
+  return { grade: parsedGrade, note: noteValue };
 }
 
 async function listSubmissions() {
@@ -1280,6 +1340,29 @@ function verifySeedSignature(seed, signature) {
 
 app.get("/api/exam", requireSession, async (req, res) => {
   await ensureConfig();
+  const isOpen = withinExamWindow();
+  const isAdmin = Boolean(req.session.isAdmin);
+
+  // Apos o prazo do edital, apenas admins podem ver as perguntas. Para
+  // candidatos comuns, devolvemos so o estado (sem objetivas/subjetivas)
+  // pra UI mostrar a tela "edital encerrado" sem expor o gabarito.
+  if (!isOpen && !isAdmin) {
+    res.json({
+      serverNow: new Date().toISOString(),
+      examStartAt: getExamStart(),
+      examEndAt: getExamEnd(),
+      isOpen: false,
+      honeypotField: HONEYPOT_FIELD,
+      minDurationMs: getMinFormDuration(),
+      you: { username: req.session.username, isAdmin: false, alreadySubmitted: false },
+      objectives: [],
+      subjectives: [],
+      seed: "",
+      seedSignature: ""
+    });
+    return;
+  }
+
   const seed = crypto.randomBytes(12).toString("hex");
   const exam = buildExamForSession(seed);
   const issuedAt = Date.now();
@@ -1295,10 +1378,10 @@ app.get("/api/exam", requireSession, async (req, res) => {
     serverNow: new Date().toISOString(),
     examStartAt: getExamStart(),
     examEndAt: getExamEnd(),
-    isOpen: withinExamWindow(),
+    isOpen,
     honeypotField: HONEYPOT_FIELD,
     minDurationMs: getMinFormDuration(),
-    you: { username: req.session.username, isAdmin: Boolean(req.session.isAdmin), alreadySubmitted },
+    you: { username: req.session.username, isAdmin, alreadySubmitted },
     ...exam
   });
 });
@@ -1313,13 +1396,14 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
       res.json({ found: false });
       return;
     }
-    res.json({
+    // So expoe pontuacao/acertos quando o admin ja decidiu (Aprovado/Reprovado).
+    // Enquanto "Em analise", o candidato ve apenas as respostas que escreveu.
+    const decided = submission.status === "Aprovado" || submission.status === "Reprovado";
+    const payload = {
       found: true,
       submittedAt: submission.submittedAt,
       status: submission.status,
-      performancePercent: submission.performancePercent,
-      objectiveScore: submission.objectiveScore,
-      objectiveTotal: submission.objectiveTotal,
+      decided,
       identity: {
         roblox: submission.identity?.roblox || "",
         tempoEb: submission.identity?.tempoEb || ""
@@ -1334,7 +1418,13 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
         question: a.question,
         answer: a.answer
       }))
-    });
+    };
+    if (decided) {
+      payload.performancePercent = submission.performancePercent;
+      payload.objectiveScore = submission.objectiveScore;
+      payload.objectiveTotal = submission.objectiveTotal;
+    }
+    res.json(payload);
   } catch (error) {
     logger.warn({ err: error.message }, "my-submission.failed");
     res.status(500).json({ error: "Erro ao carregar suas respostas." });
@@ -1359,6 +1449,7 @@ app.get("/api/admin/config", requireAdmin, async (req, res) => {
     minPerformancePercent: getMinPerformance(),
     minFormDurationMs: getMinFormDuration(),
     discordAllowedUsers: getAllowedDiscord(),
+    maxApproved: getMaxApproved(),
     isOpen: withinExamWindow(),
     serverNow: new Date().toISOString()
   });
@@ -1397,6 +1488,11 @@ app.patch("/api/admin/config", requireAdmin, async (req, res) => {
         .map((s) => String(s).trim().toLowerCase())
         .filter(Boolean)
         .slice(0, 50);
+    }
+    if (body.maxApproved !== undefined) {
+      const v = Number(body.maxApproved);
+      if (!Number.isFinite(v) || v < 0 || v > 100_000) throw new Error("Limite de aprovados invalido (0 = sem limite).");
+      next.maxApproved = Math.floor(v);
     }
 
     await saveRuntimeConfig(next);
@@ -1634,7 +1730,12 @@ app.get("/api/admin/discord/callback", async (req, res) => {
     }
 
     const isAdmin = inAllowlist && roleOk;
-    const session = createSession({ discordId: user.id, username, isAdmin });
+    // Constroi URL do avatar Discord (formato CDN oficial). Se nao tiver
+    // avatar custom, usa o default baseado no discriminator/id.
+    const avatarUrl = user.avatar
+      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
+      : `https://cdn.discordapp.com/embed/avatars/${(BigInt(user.id) >> 22n) % 6n}.png`;
+    const session = createSession({ discordId: user.id, username, isAdmin, avatarUrl });
     setSessionCookie(res, session);
     logger.info({ event: "discord.login", username, isAdmin }, "Login Discord OK");
     recordAudit(isAdmin ? "discord.login.admin" : "discord.login", username, null, null, req);
@@ -1665,6 +1766,7 @@ app.get("/api/session", (req, res) => {
     authenticated: true,
     username: session.username,
     discordId: session.discordId,
+    avatarUrl: session.avatarUrl || null,
     isAdmin: Boolean(session.isAdmin)
   });
 });
@@ -1742,7 +1844,10 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
     const objectiveTotal = objectiveQuestions.length;
     const performancePercent = Math.round((objectiveScore / objectiveTotal) * 10000) / 100;
     const aiReview = await analyzeWithGroq(valid.subjectiveAnswers);
-    const status = getAutomaticStatus(performancePercent, aiReview.averageRisk, aiReview.highRiskCount);
+    // Toda nova submissao entra como "Em analise" - so o admin define o
+    // resultado final. autoSuggestedStatus fica como dica pra banca no painel.
+    const autoSuggestedStatus = getAutomaticStatus(performancePercent, aiReview.averageRisk, aiReview.highRiskCount);
+    const status = "Em analise";
 
     const priorSubmissions = await listSubmissions();
     const similaritySummary = buildSimilaritySummary(valid.subjectiveAnswers, priorSubmissions);
@@ -1771,8 +1876,9 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
       objectiveTotal,
       performancePercent,
       status,
+      autoSuggestedStatus,
       adminNote: "",
-      statusHistory: [newStatusEntry(status, "Status automatico", "system")],
+      statusHistory: [newStatusEntry(status, `Sugestao automatica da heuristica: ${autoSuggestedStatus}`, "system")],
       seed: valid.seed,
       startedAt: valid.startedAt,
       similaritySummary,
@@ -1805,17 +1911,12 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
     }, "novo envio");
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     notifyDiscord(submission, baseUrl);
+    // Resposta enxuta - candidato so sabe que registrou, sem ver nota ou
+    // analise interna. Resultado fica disponivel via /api/my-submission
+    // depois que o admin aprovar/reprovar.
     res.status(201).json({
       id: submission.id,
-      objectiveScore,
-      objectiveTotal,
-      performancePercent,
-      aiRiskAverage: submission.aiRiskAverage,
-      aiFlaggedCount: submission.aiFlaggedCount,
-      aiHighRiskCount: submission.aiHighRiskCount,
-      similarityMax: similaritySummary.maxRatio,
-      status,
-      aiProvider: submission.aiProvider
+      status
     });
   } catch (error) {
     logger.warn({ err: error.message, stack: error.stack }, "submission.failed");
@@ -1853,6 +1954,22 @@ app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) =>
     }
     const note = String(req.body?.note || "");
     const target = await getSubmissionById(req.params.id).catch(() => null);
+
+    // Limite de aprovados: se config > 0 e ja tem N aprovados, bloqueia novas
+    // aprovacoes (exceto se o candidato ja estava aprovado, ai e idempotente).
+    if (status === "Aprovado") {
+      await ensureConfig();
+      const limit = getMaxApproved();
+      if (limit > 0 && target?.status !== "Aprovado") {
+        const all = await listSubmissions();
+        const currentApproved = all.filter((item) => item.status === "Aprovado").length;
+        if (currentApproved >= limit) {
+          res.status(409).json({ error: `Limite de aprovados atingido (${limit}). Reprove alguem ou aumente o limite nas configuracoes.` });
+          return;
+        }
+      }
+    }
+
     const entry = await updateSubmissionStatus(req.params.id, status, note, "admin");
     logger.info({ event: "submission.status", id: req.params.id, status }, "status atualizado");
     recordAudit("submission.status", "admin", req.params.id, { status }, req);
@@ -1925,6 +2042,16 @@ app.patch("/api/admin/submissions/:id/reviewer", requireAdmin, async (req, res) 
     res.json({ ok: true, reviewer });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao atribuir revisor." });
+  }
+});
+
+app.patch("/api/admin/submissions/:id/grade", requireAdmin, async (req, res) => {
+  try {
+    const result = await updateManualGrade(req.params.id, req.body?.grade, req.body?.note);
+    recordAudit("submission.grade", "admin", req.params.id, { grade: result.grade }, req);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Erro ao salvar nota manual." });
   }
 });
 
@@ -2012,6 +2139,15 @@ app.delete("/api/admin/submissions", requireAdmin, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao limpar envios." });
   }
+});
+
+// Middleware global de erro: reporta 5xx no webhook (com throttle) sem
+// mudar o corpo da resposta - cada handler ja devolve uma mensagem amigavel.
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  logger.error({ err: error.message, stack: error.stack, path: req.path }, "unhandled.error");
+  reportError({ method: req.method, path: req.path }, error);
+  res.status(500).json({ error: "Erro interno. Tente novamente em instantes." });
 });
 
 // Carrega configuracao mutavel (datas do edital etc).

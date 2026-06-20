@@ -46,7 +46,10 @@ alter table public.defensoria_submissions
   add column if not exists fingerprint text,
   add column if not exists devtools_opened boolean not null default false,
   add column if not exists review_count integer not null default 0,
-  add column if not exists max_idle_ms bigint not null default 0;
+  add column if not exists max_idle_ms bigint not null default 0,
+  add column if not exists auto_suggested_status text,
+  add column if not exists manual_grade numeric(4,1),
+  add column if not exists manual_grade_note text not null default '';
 
 create table if not exists public.defensoria_config (
   id integer primary key default 1,
