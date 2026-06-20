@@ -24,7 +24,7 @@ const HONEYPOT_FIELD = "middlename";
 // URLs fixas (nao sao segredo, podem ficar no codigo).
 // Se mudar a URL da Vercel, edite aqui ou sobrescreva por env var.
 const DEFENSORIA_URL = process.env.DEFENSORIA_URL
-  || "https://site-edital-defensoria-bly26wwtg-titaniabrm-1862s-projects.vercel.app";
+  || "https://site-edital-defensoria.vercel.app";
 const PUBLIC_ADMIN_URL = process.env.PUBLIC_ADMIN_URL
   || "https://edital-defensoria-painel-ppqjtkr6e-titaniabrm-1862s-projects.vercel.app";
 const ADMIN_PANEL_ORIGIN = process.env.ADMIN_PANEL_ORIGIN || PUBLIC_ADMIN_URL;
