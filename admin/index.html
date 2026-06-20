@@ -47,6 +47,10 @@
         </nav>
 
         <div class="admin-tab-panel" id="tab-overview">
+          <div class="overview-actions">
+            <button class="secondary-button" type="button" id="sendRankingButton">🏆 Enviar ranking pro Discord</button>
+            <button class="secondary-button" type="button" id="sendStatsButton">📊 Enviar estatisticas pro Discord</button>
+          </div>
           <div class="summary-grid" id="summaryGrid"></div>
           <div class="summary-card chart-card timeline-card">
             <span>Envios por dia (todo o periodo)</span>
@@ -82,10 +86,49 @@
                 <span>Usuarios Discord autorizados (separados por virgula)</span>
                 <input type="text" name="discordAllowedUsers" placeholder="mudinhoxy, titaniabrjv, yoursalf_.7">
               </label>
+              <label class="full maintenance-toggle">
+                <input type="checkbox" name="maintenance">
+                <span>Modo manutencao (bloqueia novos envios e a prova; admins continuam vendo)</span>
+              </label>
               <div class="config-status" id="configStatus"></div>
               <div class="config-actions">
                 <button type="submit" class="primary-button">Salvar configuracoes</button>
                 <button type="button" id="reloadConfigButton" class="secondary-button">Recarregar</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="config-panel-block">
+            <h3>Tema personalizado</h3>
+            <p class="muted-hint">Customize a aparencia do edital. Deixe em branco pra usar o padrao.</p>
+            <form id="themeForm" class="config-form">
+              <label class="full">
+                <span>Titulo do banner principal</span>
+                <input type="text" name="bannerTitle" placeholder="Ex.: Processo seletivo 2026">
+              </label>
+              <label class="full">
+                <span>Subtitulo do banner</span>
+                <input type="text" name="bannerSubtitle" placeholder="Ex.: Inscricoes abertas ate dia X">
+              </label>
+              <label>
+                <span>Cor primaria (hex)</span>
+                <input type="text" name="primaryColor" placeholder="#071a2b">
+              </label>
+              <label>
+                <span>Cor de destaque (hex)</span>
+                <input type="text" name="accentColor" placeholder="#d7ad5d">
+              </label>
+              <label>
+                <span>Cor de fundo (hex)</span>
+                <input type="text" name="backgroundColor" placeholder="#f6f2e8">
+              </label>
+              <label class="full">
+                <span>URL do logo (https, opcional)</span>
+                <input type="url" name="logoUrl" placeholder="https://...">
+              </label>
+              <div class="config-actions">
+                <button type="submit" class="primary-button">Salvar tema</button>
+                <button type="button" id="resetThemeButton" class="secondary-button">Resetar tema</button>
               </div>
             </form>
           </div>
@@ -125,8 +168,27 @@
                     <option value="date">Mais recentes</option>
                     <option value="score">Maior % objetivas</option>
                     <option value="risk">Maior risco IA</option>
+                    <option value="grade">Maior nota manual</option>
                   </select>
                 </label>
+              </div>
+              <details class="advanced-filters">
+                <summary>Filtros avancados</summary>
+                <div class="advanced-filter-grid">
+                  <label><input type="checkbox" id="advFilterDevtools"> Apenas DevTools detectado</label>
+                  <label><input type="checkbox" id="advFilterSameDevice"> Apenas mesmo dispositivo</label>
+                  <label><input type="checkbox" id="advFilterHasGrade"> Apenas com nota manual</label>
+                  <label><input type="checkbox" id="advFilterNoGrade"> Apenas sem nota manual</label>
+                  <label><input type="checkbox" id="advFilterHighSimilarity"> Plagio alto (>=55%)</label>
+                  <label><input type="checkbox" id="advFilterHasReviewer"> Com revisor atribuido</label>
+                </div>
+              </details>
+              <div class="bulk-actions hidden" id="bulkActions">
+                <span id="bulkCount">0 selecionados</span>
+                <button class="primary-button" type="button" data-bulk="Aprovado">Aprovar selecionados</button>
+                <button class="danger-button" type="button" data-bulk="Reprovado">Reprovar selecionados</button>
+                <button class="secondary-button" type="button" data-bulk="Em analise">Voltar para analise</button>
+                <button class="ghost-button" type="button" id="bulkClear">Limpar selecao</button>
               </div>
               <div id="submissionList"></div>
             </div>

@@ -33,6 +33,23 @@
   <main>
     <div id="examClosedBanner" class="exam-banner hidden" role="status"></div>
 
+    <section id="maintenancePanel" class="rules-section hidden" aria-live="polite">
+      <div class="section-heading">
+        <p class="eyebrow">Sistema em manutencao</p>
+        <h2>Voltamos em breve</h2>
+        <p>Estamos fazendo ajustes no sistema. O edital sera reaberto assim que terminar.</p>
+      </div>
+    </section>
+
+    <section id="preExamPanel" class="rules-section hidden" aria-live="polite">
+      <div class="section-heading">
+        <p class="eyebrow">Edital anunciado</p>
+        <h2 id="preExamTitle">O edital ainda nao comecou</h2>
+        <p id="preExamSubtitle"></p>
+      </div>
+      <div class="countdown-display" id="preExamCountdown" aria-live="polite"></div>
+    </section>
+
     <section id="loginGate" class="rules-section" aria-live="polite">
       <div class="section-heading">
         <p class="eyebrow">Acesso restrito</p>
@@ -150,11 +167,19 @@
         <div>
           <h2>Finalizar envio</h2>
           <p>Ao enviar, o sistema salva a inscricao no banco configurado e gera um parecer para a banca revisar.</p>
+          <p class="markdown-hint">Dica de formatacao nas respostas escritas: use <code>**negrito**</code>, <code>*italico*</code> e listas com <code>- item</code>.</p>
+        </div>
+        <div id="captchaContainer" class="captcha-container hidden">
+          <div id="hcaptchaWidget"></div>
         </div>
         <div class="submit-actions">
           <button class="ghost-button" type="button" id="jumpPendingButton">Ir para proxima pendente</button>
+          <button class="secondary-button" type="button" id="saveExitButton">Salvar e sair</button>
           <button class="secondary-button" type="button" id="clearDraftButton">Limpar rascunho</button>
-          <button class="primary-button" type="submit">Enviar respostas</button>
+          <button class="primary-button" type="submit">
+            <span class="submit-label">Enviar respostas</span>
+            <span class="submit-spinner" aria-hidden="true"></span>
+          </button>
         </div>
       </section>
     </form>

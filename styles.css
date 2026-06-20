@@ -1555,3 +1555,141 @@ footer {
     text-align: center;
   }
 }
+
+/* ---- Spinner do botao enviar ---- */
+.primary-button {
+  position: relative;
+}
+.primary-button .submit-spinner {
+  display: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  margin-left: 10px;
+  vertical-align: middle;
+  animation: dge-spin 700ms linear infinite;
+}
+.primary-button.is-loading .submit-spinner { display: inline-block; }
+.primary-button.is-loading .submit-label::after { content: "..."; }
+@keyframes dge-spin { to { transform: rotate(360deg); } }
+
+/* ---- Captcha container ---- */
+.captcha-container {
+  margin: 16px 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* ---- Markdown hint ---- */
+.markdown-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.markdown-hint code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+[data-theme="dark"] .markdown-hint code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Resposta com formatacao no painel admin */
+.answer-text strong { color: var(--navy); }
+.answer-text em { color: var(--gold-2); font-style: italic; }
+.answer-text ul { margin: 6px 0; padding-left: 20px; }
+.answer-body strong { font-weight: 700; }
+.answer-body em { font-style: italic; }
+.answer-body ul { margin: 6px 0; padding-left: 18px; }
+
+/* ---- Manutencao / Pre-edital ---- */
+.countdown-display {
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  font-weight: 850;
+  color: var(--navy);
+  text-align: center;
+  margin: 18px 0;
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="dark"] .countdown-display { color: var(--gold); }
+
+/* ---- Painel admin: filtros avancados ---- */
+.advanced-filters {
+  margin: 10px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--surface);
+}
+.advanced-filters summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--navy);
+}
+.advanced-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+.advanced-filter-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- Painel admin: acoes em lote ---- */
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  background: rgba(215, 173, 93, 0.14);
+  border: 1px solid rgba(215, 173, 93, 0.5);
+  border-radius: 8px;
+}
+.bulk-actions span { font-weight: 700; }
+
+.submission-card-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+.submission-card-wrap .submission-card {
+  flex: 1;
+}
+.submission-check {
+  padding-top: 14px;
+}
+
+/* ---- Painel admin: overview actions ---- */
+.overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+/* ---- Painel admin: toggle manutencao + hint ---- */
+.maintenance-toggle {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+}
+.maintenance-toggle input {
+  width: auto;
+  min-height: auto;
+  margin: 0;
+}
+.muted-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 4px 0 12px;
+}

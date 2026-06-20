@@ -22,6 +22,80 @@ const clientId = getClientId();
 
 // ---- Sessao Discord (login obrigatorio para fazer a prova) ----
 let currentSession = { authenticated: false, isAdmin: false, username: null };
+let publicConfig = {};
+let hcaptchaWidgetId = null;
+
+async function loadPublicConfig() {
+  try {
+    const res = await fetch("/api/config", { credentials: "same-origin" });
+    publicConfig = await res.json();
+  } catch {
+    publicConfig = {};
+  }
+  applyCustomTheme(publicConfig.theme);
+}
+
+// Aplica tema custom via CSS variables sobre os estilos padrao.
+function applyCustomTheme(theme) {
+  if (!theme) return;
+  const root = document.documentElement;
+  if (theme.primaryColor) root.style.setProperty("--navy", theme.primaryColor);
+  if (theme.accentColor) root.style.setProperty("--gold", theme.accentColor);
+  if (theme.backgroundColor) root.style.setProperty("--paper", theme.backgroundColor);
+  // Logo e textos do hero
+  if (theme.logoUrl) {
+    document.querySelectorAll(".brand img, .status-panel img").forEach((img) => {
+      img.src = theme.logoUrl;
+    });
+  }
+  if (theme.bannerTitle) {
+    const h = document.querySelector(".hero-copy h2");
+    if (h) h.textContent = theme.bannerTitle;
+  }
+  if (theme.bannerSubtitle) {
+    const p = document.querySelector(".hero-copy p:last-child");
+    if (p) p.textContent = theme.bannerSubtitle;
+  }
+}
+
+// Carrega o widget hCaptcha so quando ha sitekey publica configurada.
+function setupHCaptchaIfNeeded() {
+  const sitekey = publicConfig.hcaptchaSiteKey;
+  const container = document.querySelector("#captchaContainer");
+  if (!sitekey || !container) return;
+  const widget = document.querySelector("#hcaptchaWidget");
+  if (!widget || widget.dataset.loaded) {
+    container.classList.remove("hidden");
+    return;
+  }
+  container.classList.remove("hidden");
+  // Carrega o script externo so quando precisamos (depois do login).
+  const script = document.createElement("script");
+  script.src = "https://hcaptcha.com/1/api.js?render=explicit";
+  script.async = true;
+  script.defer = true;
+  script.onload = () => {
+    if (window.hcaptcha) {
+      hcaptchaWidgetId = window.hcaptcha.render(widget, { sitekey });
+      widget.dataset.loaded = "1";
+    }
+  };
+  document.head.appendChild(script);
+}
+
+function getCaptchaToken() {
+  if (!publicConfig.hcaptchaSiteKey || hcaptchaWidgetId === null) return "";
+  try {
+    return window.hcaptcha.getResponse(hcaptchaWidgetId) || "";
+  } catch {
+    return "";
+  }
+}
+
+function resetCaptcha() {
+  if (hcaptchaWidgetId === null) return;
+  try { window.hcaptcha.reset(hcaptchaWidgetId); } catch {}
+}
 
 function goToDiscordLogin() {
   window.location.href = `/api/admin/discord/start?return_to=${encodeURIComponent("/")}`;
@@ -595,12 +669,17 @@ function renderMyAnswersList(objectiveItems, subjectiveItems) {
       <span>${escapeHtml(item.selectedText || "Nao respondida")}</span>
     </div>
   `).join("");
-  const subjRows = subjectiveItems.map((item, i) => `
-    <div class="review-item">
-      <strong>${objectiveItems.length + i + 1}.</strong> ${escapeHtml(item.question)}<br>
-      <span>${escapeHtml(item.answer || "Nao respondida")}</span>
-    </div>
-  `).join("");
+  const subjRows = subjectiveItems.map((item, i) => {
+    // Quando o servidor anexa answerHtml (markdown renderizado), usamos ele.
+    // Caso contrario (envio recem feito no client), escapa o texto cru.
+    const body = item.answerHtml || `<span>${escapeHtml(item.answer || "Nao respondida")}</span>`;
+    return `
+      <div class="review-item">
+        <strong>${objectiveItems.length + i + 1}.</strong> ${escapeHtml(item.question)}<br>
+        <div class="answer-body">${body}</div>
+      </div>
+    `;
+  }).join("");
   return objRows + subjRows;
 }
 
@@ -647,10 +726,14 @@ async function submitForm() {
 
   const submitButton = form.querySelector('button[type="submit"]');
   submitButton.disabled = true;
-  submitButton.textContent = "Enviando...";
+  submitButton.classList.add("is-loading");
 
   try {
+    if (publicConfig.hcaptchaSiteKey && !getCaptchaToken()) {
+      throw new Error("Resolva o captcha antes de enviar.");
+    }
     const submission = collectFormData();
+    submission.captchaToken = getCaptchaToken();
     const objectiveItems = objectiveQuestions.map((q) => {
       const sel = form.querySelector(`[name="q${q.id}"]:checked`);
       const label = sel ? sel.closest(".option-row")?.querySelector("span")?.textContent?.trim() : null;
@@ -688,9 +771,10 @@ async function submitForm() {
     toast("Avaliacao enviada.", "success", "Tudo certo");
   } catch (error) {
     toast(error.message, "error", "Erro no envio");
+    resetCaptcha();
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Enviar respostas";
+    submitButton.classList.remove("is-loading");
   }
 }
 
@@ -737,6 +821,15 @@ function bindEvents() {
   });
 
   document.querySelector("#clearDraftButton")?.addEventListener("click", clearDraft);
+  document.querySelector("#saveExitButton")?.addEventListener("click", async () => {
+    saveDraft();
+    dirtyDraft = false;
+    toast("Rascunho salvo. Encerrando sessao...", "success");
+    try {
+      await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" });
+    } catch {}
+    setTimeout(() => window.location.reload(), 800);
+  });
 
   document.querySelectorAll("[data-scroll-target]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -821,11 +914,54 @@ function registerServiceWorker() {
   });
 }
 
+function showMaintenancePanel() {
+  document.querySelector("#maintenancePanel")?.classList.remove("hidden");
+  document.querySelector("#loginGate")?.classList.add("hidden");
+  document.querySelectorAll(".candidate-only").forEach((el) => el.classList.add("hidden"));
+}
+
+function showPreExamPanel(startIso) {
+  const panel = document.querySelector("#preExamPanel");
+  if (!panel) return;
+  panel.classList.remove("hidden");
+  document.querySelectorAll(".candidate-only").forEach((el) => el.classList.add("hidden"));
+  const sub = document.querySelector("#preExamSubtitle");
+  const countdown = document.querySelector("#preExamCountdown");
+  if (sub) sub.textContent = `Abertura em ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(startIso))}`;
+  const update = () => {
+    const remaining = Math.max(0, new Date(startIso).getTime() - Date.now());
+    if (!remaining) { window.location.reload(); return; }
+    const dd = Math.floor(remaining / 86400000);
+    const hh = String(Math.floor((remaining / 3600000) % 24)).padStart(2, "0");
+    const mins = String(Math.floor((remaining / 60000) % 60)).padStart(2, "0");
+    const secs = String(Math.floor((remaining / 1000) % 60)).padStart(2, "0");
+    if (countdown) countdown.textContent = `${dd}d ${hh}:${mins}:${secs}`;
+  };
+  update();
+  setInterval(update, 1000);
+}
+
 async function boot() {
   bindTheme();
   bindSessionEvents();
   registerServiceWorker();
   handleLoginCallback();
+  await loadPublicConfig();
+
+  // Modo manutencao: bloqueia tudo pra candidato comum, antes mesmo do login.
+  if (publicConfig.maintenance) {
+    showMaintenancePanel();
+    return;
+  }
+
+  // Pre-edital: se ainda nao abriu, mostra contagem regressiva e nao pede login.
+  const now = Date.now();
+  const start = publicConfig.examStartAt ? new Date(publicConfig.examStartAt).getTime() : 0;
+  if (start && now < start) {
+    showPreExamPanel(publicConfig.examStartAt);
+    return;
+  }
+
   await checkSession();
   if (!currentSession.authenticated) {
     return;
@@ -833,6 +969,7 @@ async function boot() {
   try {
     await loadExamFromServer();
   } catch (error) {
+    if (error.message?.includes("manutencao")) { showMaintenancePanel(); return; }
     toast(error.message, "error", "Carregar edital");
     return;
   }
@@ -851,6 +988,7 @@ async function boot() {
     return;
   }
 
+  setupHCaptchaIfNeeded();
   renderQuestions();
   loadDraft();
   await loadServerDraftIfNewer();

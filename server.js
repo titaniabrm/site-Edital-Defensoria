@@ -42,6 +42,8 @@ const DISCORD_ALLOWED_USERS = (process.env.DISCORD_ALLOWED_USERS || "mudinhoxy,t
 const DISCORD_GUILD_ID = process.env.DISCORD_GUILD_ID || "";
 const DISCORD_REQUIRED_ROLE_ID = process.env.DISCORD_REQUIRED_ROLE_ID || "";
 const CRON_SECRET = process.env.CRON_SECRET || "";
+const HCAPTCHA_SITE_KEY = process.env.HCAPTCHA_SITE_KEY || "";
+const HCAPTCHA_SECRET = process.env.HCAPTCHA_SECRET || "";
 const DATA_DIR = path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "submissions.json");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
@@ -198,6 +200,42 @@ function getMaxApproved() {
   const v = Number(runtimeConfig.maxApproved);
   return Number.isFinite(v) && v >= 0 ? v : 0;
 }
+function isMaintenanceMode() {
+  return Boolean(runtimeConfig.maintenanceMode);
+}
+function getThemeConfig() {
+  const t = runtimeConfig.theme || {};
+  return {
+    bannerTitle: String(t.bannerTitle || "").slice(0, 120),
+    bannerSubtitle: String(t.bannerSubtitle || "").slice(0, 240),
+    primaryColor: String(t.primaryColor || "").slice(0, 20),
+    accentColor: String(t.accentColor || "").slice(0, 20),
+    backgroundColor: String(t.backgroundColor || "").slice(0, 20),
+    logoUrl: String(t.logoUrl || "").slice(0, 300)
+  };
+}
+
+// Valida o token devolvido pelo widget hCaptcha. Se nao houver chave
+// configurada, considera valido (dev/local). Em producao, defina
+// HCAPTCHA_SECRET e o frontend so deixa enviar com token.
+async function verifyHCaptcha(token, remoteIp) {
+  if (!HCAPTCHA_SECRET) return true;
+  if (!token) return false;
+  try {
+    const params = new URLSearchParams({ secret: HCAPTCHA_SECRET, response: String(token) });
+    if (remoteIp) params.append("remoteip", remoteIp);
+    const res = await fetch("https://hcaptcha.com/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params
+    });
+    const data = await res.json();
+    return Boolean(data?.success);
+  } catch (error) {
+    logger.warn({ err: error.message }, "hcaptcha.verify.failed");
+    return false;
+  }
+}
 
 function withinExamWindow(now = new Date()) {
   const start = new Date(getExamStart());
@@ -277,6 +315,39 @@ function consumeMagicLink(token) {
   if (!entry || entry.used || Date.now() > entry.expiresAt) return false;
   entry.used = true;
   return true;
+}
+
+// Escapa HTML e aplica markdown leve: **negrito**, *italico*, listas com "- ".
+// Saida segura pra inserir como innerHTML no painel admin ou no cliente.
+function escapeHtmlForRender(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+function renderLightMarkdown(text) {
+  const escaped = escapeHtmlForRender(text);
+  const lines = escaped.split(/\r?\n/);
+  let html = "";
+  let inList = false;
+  for (const line of lines) {
+    const trimmed = line.replace(/^\s+/, "");
+    if (/^[-*]\s+/.test(trimmed)) {
+      if (!inList) { html += "<ul>"; inList = true; }
+      html += `<li>${trimmed.replace(/^[-*]\s+/, "")}</li>`;
+    } else {
+      if (inList) { html += "</ul>"; inList = false; }
+      html += line + "<br>";
+    }
+  }
+  if (inList) html += "</ul>";
+  // negrito **x** e italico *x* (negrito primeiro pra nao colidir)
+  html = html
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  return html;
 }
 
 async function notifyDiscord(submission, baseUrl) {
@@ -372,12 +443,16 @@ app.use((req, res, next) => {
   res.setHeader("Referrer-Policy", "no-referrer");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
   res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  // CSP precisa permitir hcaptcha.com (script, iframe e tracking pixel) e
+  // o CDN do Discord pra imagem do avatar. logoUrl do tema custom pode ser
+  // hospedado em qualquer https publico - permitimos genericamente em img-src.
   res.setHeader("Content-Security-Policy", [
     "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://cdn.discordapp.com",
-    "connect-src 'self'",
+    "script-src 'self' https://hcaptcha.com https://*.hcaptcha.com",
+    "style-src 'self' 'unsafe-inline' https://hcaptcha.com https://*.hcaptcha.com",
+    "img-src 'self' data: https:",
+    "connect-src 'self' https://hcaptcha.com https://*.hcaptcha.com",
+    "frame-src https://hcaptcha.com https://*.hcaptcha.com",
     "font-src 'self'",
     "base-uri 'self'",
     "form-action 'self' https://discord.com",
@@ -1343,6 +1418,11 @@ app.get("/api/exam", requireSession, async (req, res) => {
   const isOpen = withinExamWindow();
   const isAdmin = Boolean(req.session.isAdmin);
 
+  if (isMaintenanceMode() && !isAdmin) {
+    res.status(503).json({ error: "O sistema esta em manutencao. Voltamos em breve." });
+    return;
+  }
+
   // Apos o prazo do edital, apenas admins podem ver as perguntas. Para
   // candidatos comuns, devolvemos so o estado (sem objetivas/subjetivas)
   // pra UI mostrar a tela "edital encerrado" sem expor o gabarito.
@@ -1416,7 +1496,8 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
       subjectiveAnswers: (submission.subjectiveAnswers || []).map((a) => ({
         id: a.id,
         question: a.question,
-        answer: a.answer
+        answer: a.answer,
+        answerHtml: renderLightMarkdown(a.answer)
       }))
     };
     if (decided) {
@@ -1437,7 +1518,10 @@ app.get("/api/config", async (req, res) => {
     examStartAt: getExamStart(),
     examEndAt: getExamEnd(),
     isOpen: withinExamWindow(),
-    minPerformancePercent: getMinPerformance()
+    minPerformancePercent: getMinPerformance(),
+    maintenance: isMaintenanceMode(),
+    theme: getThemeConfig(),
+    hcaptchaSiteKey: HCAPTCHA_SITE_KEY || null
   });
 });
 
@@ -1450,6 +1534,9 @@ app.get("/api/admin/config", requireAdmin, async (req, res) => {
     minFormDurationMs: getMinFormDuration(),
     discordAllowedUsers: getAllowedDiscord(),
     maxApproved: getMaxApproved(),
+    maintenance: isMaintenanceMode(),
+    theme: getThemeConfig(),
+    hcaptchaConfigured: Boolean(HCAPTCHA_SECRET),
     isOpen: withinExamWindow(),
     serverNow: new Date().toISOString()
   });
@@ -1493,6 +1580,19 @@ app.patch("/api/admin/config", requireAdmin, async (req, res) => {
       const v = Number(body.maxApproved);
       if (!Number.isFinite(v) || v < 0 || v > 100_000) throw new Error("Limite de aprovados invalido (0 = sem limite).");
       next.maxApproved = Math.floor(v);
+    }
+    if (body.maintenance !== undefined) {
+      next.maintenanceMode = Boolean(body.maintenance);
+    }
+    if (body.theme && typeof body.theme === "object") {
+      next.theme = {
+        bannerTitle: String(body.theme.bannerTitle || "").slice(0, 120),
+        bannerSubtitle: String(body.theme.bannerSubtitle || "").slice(0, 240),
+        primaryColor: String(body.theme.primaryColor || "").slice(0, 20),
+        accentColor: String(body.theme.accentColor || "").slice(0, 20),
+        backgroundColor: String(body.theme.backgroundColor || "").slice(0, 20),
+        logoUrl: String(body.theme.logoUrl || "").slice(0, 300)
+      };
     }
 
     await saveRuntimeConfig(next);
@@ -1829,6 +1929,15 @@ function rateLimitSubmissions(req, res, next) {
 app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, res) => {
   try {
     await ensureConfig();
+    if (isMaintenanceMode() && !req.session.isAdmin) {
+      res.status(503).json({ error: "Sistema em manutencao. Tente novamente em alguns minutos." });
+      return;
+    }
+    const captchaOk = await verifyHCaptcha(req.body?.captchaToken, clientIp(req));
+    if (!captchaOk) {
+      res.status(400).json({ error: "Captcha invalido ou expirado. Recarregue a pagina e tente de novo." });
+      return;
+    }
     const valid = validateSubmission(req.body, req.session);
     const duplicate = await findDuplicateSubmission(valid.identity);
     if (duplicate) {
@@ -1938,7 +2047,16 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
 
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
   try {
-    res.json(await listSubmissions());
+    const submissions = await listSubmissions();
+    // Anexa a versao renderizada das respostas subjetivas para a banca ler
+    // com formatacao (negrito/italico/lista) sem precisar renderizar no client.
+    submissions.forEach((s) => {
+      s.subjectiveAnswers = (s.subjectiveAnswers || []).map((a) => ({
+        ...a,
+        answerHtml: renderLightMarkdown(a.answer)
+      }));
+    });
+    res.json(submissions);
   } catch (error) {
     logger.error({ err: error.message }, "admin.list.failed");
     res.status(500).json({ error: "Erro ao listar envios. Verifique configuracao do banco." });
@@ -2068,14 +2186,141 @@ app.get("/api/admin/active", requireAdmin, async (req, res) => {
   res.json({ active: await countActivePresence(), windowMs: PRESENCE_WINDOW_MS });
 });
 
+// Envia para o canal do webhook a tabela atual de aprovados ordenada por nota
+// manual (desempate: % de objetivas). Roda quando o admin clica o botao.
+app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
+  if (!DISCORD_WEBHOOK_URL) {
+    res.status(400).json({ error: "DISCORD_WEBHOOK_URL nao configurado." });
+    return;
+  }
+  try {
+    const all = await listSubmissions();
+    const approved = all.filter((s) => s.status === "Aprovado");
+    if (!approved.length) {
+      res.status(400).json({ error: "Nenhum aprovado para incluir no ranking." });
+      return;
+    }
+    approved.sort((a, b) => {
+      const gradeA = a.manualGrade ?? -1;
+      const gradeB = b.manualGrade ?? -1;
+      if (gradeB !== gradeA) return gradeB - gradeA;
+      return (b.performancePercent || 0) - (a.performancePercent || 0);
+    });
+    const lines = approved.map((s, i) => {
+      const note = s.manualGrade != null ? `nota ${s.manualGrade}` : `${s.performancePercent}% objetivas`;
+      return `**${i + 1}º** — @${s.identity.discord || "?"} (${note})`;
+    });
+    const payload = {
+      username: "Defensoria-Geral do Exercito",
+      embeds: [{
+        title: `🏆 Ranking dos aprovados (${approved.length})`,
+        description: lines.slice(0, 25).join("\n"),
+        color: 0xd7ad5d,
+        timestamp: new Date().toISOString(),
+        footer: lines.length > 25 ? { text: `+${lines.length - 25} candidatos nao exibidos` } : undefined
+      }]
+    };
+    const wh = await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!wh.ok) throw new Error(`webhook respondeu ${wh.status}`);
+    recordAudit("ranking.send", req.session.username, null, { count: approved.length }, req);
+    res.json({ ok: true, count: approved.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Falha ao enviar ranking." });
+  }
+});
+
+// Estatisticas da semana (ultimos 7 dias) para o canal do webhook.
+app.post("/api/admin/stats/send", requireAdmin, async (req, res) => {
+  if (!DISCORD_WEBHOOK_URL) {
+    res.status(400).json({ error: "DISCORD_WEBHOOK_URL nao configurado." });
+    return;
+  }
+  try {
+    const all = await listSubmissions();
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recent = all.filter((s) => new Date(s.submittedAt).getTime() >= weekAgo);
+    const totals = {
+      total: all.length,
+      weekTotal: recent.length,
+      approved: all.filter((s) => s.status === "Aprovado").length,
+      rejected: all.filter((s) => s.status === "Reprovado").length,
+      pending: all.filter((s) => s.status === "Em analise").length
+    };
+    const avgScore = recent.length
+      ? Math.round(recent.reduce((sum, s) => sum + (s.performancePercent || 0), 0) / recent.length)
+      : 0;
+    const payload = {
+      username: "Defensoria-Geral do Exercito",
+      embeds: [{
+        title: "📊 Estatisticas semanais",
+        color: 0x4f6a50,
+        fields: [
+          { name: "Envios na semana", value: String(totals.weekTotal), inline: true },
+          { name: "Total geral", value: String(totals.total), inline: true },
+          { name: "Media de objetivas (semana)", value: `${avgScore}%`, inline: true },
+          { name: "Aprovados", value: String(totals.approved), inline: true },
+          { name: "Reprovados", value: String(totals.rejected), inline: true },
+          { name: "Em analise", value: String(totals.pending), inline: true }
+        ],
+        timestamp: new Date().toISOString()
+      }]
+    };
+    const wh = await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!wh.ok) throw new Error(`webhook respondeu ${wh.status}`);
+    recordAudit("stats.send", req.session.username, null, totals, req);
+    res.json({ ok: true, ...totals });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Falha ao enviar estatisticas." });
+  }
+});
+
 // Heartbeat publico de presenca (candidato preenchendo).
-app.post("/api/presence", async (req, res) => {
+// Rate limit por sessao (alem do por IP em outros lugares): protege endpoints
+// que cada candidato pode chamar com frequencia (rascunho, heartbeat) contra
+// abuso de quem ja esta logado.
+function makeSessionRateLimit(maxPerMinute) {
+  const store = new Map();
+  const WINDOW_MS = 60_000;
+  return function (req, res, next) {
+    const session = readSession(req);
+    const key = session?.discordId || session?.username || clientIp(req);
+    const now = Date.now();
+    const entry = store.get(key) || { count: 0, reset: now + WINDOW_MS };
+    if (now > entry.reset) {
+      entry.count = 0;
+      entry.reset = now + WINDOW_MS;
+    }
+    entry.count += 1;
+    store.set(key, entry);
+    // Limpa entradas velhas eventualmente (best effort).
+    if (store.size > 5000) {
+      for (const [k, v] of store) if (now > v.reset) store.delete(k);
+    }
+    if (entry.count > maxPerMinute) {
+      res.status(429).json({ error: "Muitas chamadas. Aguarde um momento." });
+      return;
+    }
+    next();
+  };
+}
+const draftRateLimit = makeSessionRateLimit(30);
+const presenceRateLimit = makeSessionRateLimit(10);
+
+app.post("/api/presence", presenceRateLimit, async (req, res) => {
   await touchPresence(req.body?.clientId);
   res.json({ ok: true });
 });
 
 // Rascunho no servidor (sincroniza entre dispositivos).
-app.post("/api/draft", async (req, res) => {
+app.post("/api/draft", draftRateLimit, async (req, res) => {
   try {
     const clientId = String(req.body?.clientId || "");
     const data = req.body?.data;

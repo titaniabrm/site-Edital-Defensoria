@@ -1,6 +1,8 @@
 let selectedSubmissionId = null;
 let reviewUnlocked = false;
 let loadedSubmissions = [];
+// Conjunto de IDs marcados pra acoes em lote.
+const bulkSelection = new Set();
 
 // Badge no titulo da aba: avisa que chegaram envios novos enquanto o admin
 // estava em outra aba, sem precisar deixar o painel sempre em foco.
@@ -188,27 +190,60 @@ function renderSubmissionList(submissions) {
     const risk = riskLabel(submission.aiRiskAverage);
     const status = statusLabel(submission.status);
     const percentage = Math.round((submission.objectiveScore / submission.objectiveTotal) * 100);
+    const selected = bulkSelection.has(submission.id);
+    const gradePill = submission.manualGrade != null ? `<span class="pill good">Nota ${submission.manualGrade}</span>` : "";
     return `
-      <button class="submission-card ${submission.id === selectedSubmissionId ? "active" : ""}" type="button" data-submission-id="${submission.id}">
-        <h3>${escapeHtml(submission.identity.discord || "Sem Discord")}</h3>
-        <div class="submission-meta">
-          <span class="pill">${percentage}% objetivas</span>
-          <span class="pill ${status.className}">${status.text}</span>
-          <span class="pill ${risk.className}">${risk.text}</span>
-          ${submission.devtoolsOpened ? `<span class="pill bad">DevTools</span>` : ""}
-          ${submission.fingerprintMatches?.length ? `<span class="pill bad">⚠ Mesmo dispositivo</span>` : ""}
-          ${submission.reviewer ? `<span class="pill">👤 ${escapeHtml(submission.reviewer)}</span>` : ""}
-          <span class="pill">${formatDate(submission.submittedAt)}</span>
-        </div>
-      </button>
+      <div class="submission-card-wrap">
+        <label class="submission-check" title="Selecionar para acoes em lote">
+          <input type="checkbox" data-bulk-select="${submission.id}" ${selected ? "checked" : ""}>
+        </label>
+        <button class="submission-card ${submission.id === selectedSubmissionId ? "active" : ""}" type="button" data-submission-id="${submission.id}">
+          <h3>${escapeHtml(submission.identity.discord || "Sem Discord")}</h3>
+          <div class="submission-meta">
+            <span class="pill">${percentage}% objetivas</span>
+            ${gradePill}
+            <span class="pill ${status.className}">${status.text}</span>
+            <span class="pill ${risk.className}">${risk.text}</span>
+            ${submission.devtoolsOpened ? `<span class="pill bad">DevTools</span>` : ""}
+            ${submission.fingerprintMatches?.length ? `<span class="pill bad">⚠ Mesmo dispositivo</span>` : ""}
+            ${submission.reviewer ? `<span class="pill">👤 ${escapeHtml(submission.reviewer)}</span>` : ""}
+            <span class="pill">${formatDate(submission.submittedAt)}</span>
+          </div>
+        </button>
+      </div>
     `;
   }).join("");
+  updateBulkUI();
+}
+
+function updateBulkUI() {
+  const bar = document.querySelector("#bulkActions");
+  const count = document.querySelector("#bulkCount");
+  if (!bar) return;
+  if (bulkSelection.size === 0) {
+    bar.classList.add("hidden");
+  } else {
+    bar.classList.remove("hidden");
+    if (count) count.textContent = `${bulkSelection.size} selecionado(s)`;
+  }
+}
+
+function readAdvancedFilters() {
+  return {
+    devtools: document.querySelector("#advFilterDevtools")?.checked,
+    sameDevice: document.querySelector("#advFilterSameDevice")?.checked,
+    hasGrade: document.querySelector("#advFilterHasGrade")?.checked,
+    noGrade: document.querySelector("#advFilterNoGrade")?.checked,
+    highSimilarity: document.querySelector("#advFilterHighSimilarity")?.checked,
+    hasReviewer: document.querySelector("#advFilterHasReviewer")?.checked
+  };
 }
 
 function getFilteredSubmissions() {
   const filter = riskFilter?.value || "all";
   const sort = sortBy?.value || "date";
   const term = normalizeText(searchInput?.value || "");
+  const adv = readAdvancedFilters();
 
   let submissions = [...loadedSubmissions];
 
@@ -229,10 +264,20 @@ function getFilteredSubmissions() {
     submissions = submissions.filter((item) => item.status === "Reprovado");
   }
 
+  // Filtros avancados (AND): cada checkbox marcado restringe a lista.
+  if (adv.devtools) submissions = submissions.filter((s) => s.devtoolsOpened);
+  if (adv.sameDevice) submissions = submissions.filter((s) => s.fingerprintMatches?.length);
+  if (adv.hasGrade) submissions = submissions.filter((s) => s.manualGrade != null);
+  if (adv.noGrade) submissions = submissions.filter((s) => s.manualGrade == null);
+  if (adv.highSimilarity) submissions = submissions.filter((s) => (s.similaritySummary?.maxRatio || 0) >= 55);
+  if (adv.hasReviewer) submissions = submissions.filter((s) => s.reviewer);
+
   if (sort === "score") {
     submissions.sort((a, b) => (b.objectiveScore / b.objectiveTotal) - (a.objectiveScore / a.objectiveTotal));
   } else if (sort === "risk") {
     submissions.sort((a, b) => b.aiRiskAverage - a.aiRiskAverage);
+  } else if (sort === "grade") {
+    submissions.sort((a, b) => (b.manualGrade ?? -1) - (a.manualGrade ?? -1));
   } else {
     submissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
   }
@@ -266,7 +311,7 @@ function renderSubmissionDetail(submission) {
       <div class="answer-review">
         <span>Questao ${answer.id} - ${answer.aiReview.wordCount} palavras - variedade ${answer.aiReview.uniqueRatio}%</span>
         <h3>${escapeHtml(answer.question)}</h3>
-        <p class="answer-text">${escapeHtml(answer.answer)}</p>
+        <div class="answer-text">${answer.answerHtml || escapeHtml(answer.answer)}</div>
         <div class="submission-meta">
           <span class="pill ${risk.className}">${risk.text}</span>
           <span class="pill">${answer.aiReview.score}% risco</span>
@@ -497,6 +542,95 @@ async function loadMetricsChart() {
     renderTimelineChart(data.perDay);
   } catch {
     // mantem o estado anterior em caso de falha temporaria
+  }
+}
+
+// ---- Acoes em lote: aprovar/reprovar varios candidatos de uma vez. ----
+async function bulkUpdateStatus(status) {
+  if (!bulkSelection.size) return;
+  if (!confirm(`Aplicar status "${status}" a ${bulkSelection.size} candidato(s)?`)) return;
+  const ids = [...bulkSelection];
+  let ok = 0;
+  let fail = 0;
+  for (const id of ids) {
+    try {
+      const res = await api(`/api/admin/submissions/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, note: "Atualizacao em lote" })
+      });
+      if (res.ok) {
+        const target = loadedSubmissions.find((s) => s.id === id);
+        if (target) target.status = status;
+        ok += 1;
+      } else {
+        fail += 1;
+      }
+    } catch {
+      fail += 1;
+    }
+  }
+  bulkSelection.clear();
+  renderReview();
+  toast(`${ok} atualizado(s)${fail ? `, ${fail} com erro` : ""}.`, fail ? "warn" : "success");
+}
+
+async function sendRanking() {
+  if (!confirm("Enviar o ranking atual dos aprovados para o canal do Discord?")) return;
+  try {
+    const res = await api("/api/admin/ranking/send", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Falha ao enviar ranking.");
+    toast(`Ranking de ${data.count} aprovados enviado.`, "success", "Discord");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function sendStats() {
+  if (!confirm("Enviar as estatisticas da semana para o canal do Discord?")) return;
+  try {
+    const res = await api("/api/admin/stats/send", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Falha ao enviar estatisticas.");
+    toast(`Estatisticas enviadas (${data.weekTotal} envios na semana).`, "success", "Discord");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function saveTheme(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const theme = {
+    bannerTitle: form.elements.bannerTitle.value.trim(),
+    bannerSubtitle: form.elements.bannerSubtitle.value.trim(),
+    primaryColor: form.elements.primaryColor.value.trim(),
+    accentColor: form.elements.accentColor.value.trim(),
+    backgroundColor: form.elements.backgroundColor.value.trim(),
+    logoUrl: form.elements.logoUrl.value.trim()
+  };
+  try {
+    const res = await api("/api/admin/config", { method: "PATCH", body: JSON.stringify({ theme }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Falha ao salvar tema.");
+    toast("Tema salvo. Os candidatos verao no proximo carregamento.", "success");
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
+async function resetTheme() {
+  if (!confirm("Voltar ao tema padrao?")) return;
+  try {
+    const res = await api("/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({ theme: { bannerTitle: "", bannerSubtitle: "", primaryColor: "", accentColor: "", backgroundColor: "", logoUrl: "" } })
+    });
+    if (!res.ok) throw new Error("Falha ao resetar tema.");
+    document.querySelectorAll("#themeForm input").forEach((i) => { i.value = ""; });
+    toast("Tema padrao restaurado.", "success");
+  } catch (error) {
+    toast(error.message, "error");
   }
 }
 
@@ -750,8 +884,23 @@ async function loadConfig() {
     form.elements.minPerformancePercent.value = cfg.minPerformancePercent;
     form.elements.minFormDurationSec.value = Math.round((cfg.minFormDurationMs || 0) / 1000);
     if (form.elements.maxApproved) form.elements.maxApproved.value = cfg.maxApproved || 0;
+    if (form.elements.maintenance) form.elements.maintenance.checked = Boolean(cfg.maintenance);
     form.elements.discordAllowedUsers.value = (cfg.discordAllowedUsers || []).join(", ");
-    if (status) status.textContent = `Edital ${cfg.isOpen ? "ABERTO" : "FECHADO"} agora. Servidor: ${new Date(cfg.serverNow).toLocaleString("pt-BR")}`;
+    // Popula o formulario de tema com os valores atuais.
+    const themeForm = document.querySelector("#themeForm");
+    if (themeForm && cfg.theme) {
+      themeForm.elements.bannerTitle.value = cfg.theme.bannerTitle || "";
+      themeForm.elements.bannerSubtitle.value = cfg.theme.bannerSubtitle || "";
+      themeForm.elements.primaryColor.value = cfg.theme.primaryColor || "";
+      themeForm.elements.accentColor.value = cfg.theme.accentColor || "";
+      themeForm.elements.backgroundColor.value = cfg.theme.backgroundColor || "";
+      themeForm.elements.logoUrl.value = cfg.theme.logoUrl || "";
+    }
+    if (status) {
+      const captchaInfo = cfg.hcaptchaConfigured ? "hCaptcha ativo" : "hCaptcha desativado";
+      const maintInfo = cfg.maintenance ? " | MODO MANUTENCAO ATIVO" : "";
+      status.textContent = `Edital ${cfg.isOpen ? "ABERTO" : "FECHADO"} agora. ${captchaInfo}${maintInfo}.`;
+    }
   } catch (error) {
     if (status) status.textContent = error.message;
   }
@@ -767,6 +916,7 @@ async function saveConfig(event) {
     minPerformancePercent: Number(form.elements.minPerformancePercent.value),
     minFormDurationMs: Number(form.elements.minFormDurationSec.value) * 1000,
     maxApproved: form.elements.maxApproved ? Number(form.elements.maxApproved.value) : 0,
+    maintenance: form.elements.maintenance ? Boolean(form.elements.maintenance.checked) : false,
     discordAllowedUsers: form.elements.discordAllowedUsers.value
       .split(",")
       .map((s) => s.trim())
@@ -870,11 +1020,35 @@ function bindEvents() {
     toast("Envios apagados.", "success");
   });
   submissionList?.addEventListener("click", (event) => {
+    const check = event.target.closest("[data-bulk-select]");
+    if (check) {
+      const id = check.dataset.bulkSelect;
+      if (check.checked) bulkSelection.add(id);
+      else bulkSelection.delete(id);
+      updateBulkUI();
+      event.stopPropagation();
+      return;
+    }
     const button = event.target.closest("[data-submission-id]");
     if (!button) return;
     selectedSubmissionId = button.dataset.submissionId;
     renderReview();
   });
+  document.querySelector("#bulkActions")?.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-bulk]");
+    if (btn) await bulkUpdateStatus(btn.dataset.bulk);
+    if (event.target.id === "bulkClear") {
+      bulkSelection.clear();
+      renderReview();
+    }
+  });
+  document.querySelectorAll(".advanced-filter-grid input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => renderReview());
+  });
+  document.querySelector("#sendRankingButton")?.addEventListener("click", sendRanking);
+  document.querySelector("#sendStatsButton")?.addEventListener("click", sendStats);
+  document.querySelector("#themeForm")?.addEventListener("submit", saveTheme);
+  document.querySelector("#resetThemeButton")?.addEventListener("click", resetTheme);
   submissionDetail?.addEventListener("click", handleSubmissionDetailClick);
   document.querySelector("#closeCompare")?.addEventListener("click", () => {
     document.querySelector("#compareModal")?.classList.add("hidden");
