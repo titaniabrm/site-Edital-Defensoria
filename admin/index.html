@@ -92,6 +92,12 @@
                 <h3>Envios</h3>
                 <button class="danger-button" type="button" id="clearSubmissionsButton">Limpar envios</button>
               </div>
+              <div class="status-chips" id="statusChips" aria-label="Filtrar por status">
+                <button class="status-chip active" type="button" data-status-chip="all">Todos <span id="chipCountAll">0</span></button>
+                <button class="status-chip good" type="button" data-status-chip="approved">Aprovados <span id="chipCountApproved">0</span></button>
+                <button class="status-chip bad" type="button" data-status-chip="rejected">Reprovados <span id="chipCountRejected">0</span></button>
+                <button class="status-chip warn" type="button" data-status-chip="review">Em andamento <span id="chipCountReview">0</span></button>
+              </div>
               <div class="filter-row">
                 <label>
                   <span>Buscar</span>
@@ -114,14 +120,6 @@
                     <option value="score">Maior % objetivas</option>
                     <option value="risk">Maior risco IA</option>
                   </select>
-                </label>
-                <label>
-                  <span>Desde</span>
-                  <input id="dateFrom" type="date">
-                </label>
-                <label>
-                  <span>Ate</span>
-                  <input id="dateTo" type="date">
                 </label>
               </div>
               <div id="submissionList"></div>
@@ -146,6 +144,7 @@
   <footer>
     <span>Defensoria-Geral do Exercito</span>
     <span>Painel administrativo</span>
+    <span class="credits">Desenvolvido por <a href="https://portf-lio-dev-bots.vercel.app" target="_blank" rel="noopener">DevBots</a></span>
   </footer>
 
   <div id="compareModal" class="modal hidden" role="dialog" aria-modal="true">

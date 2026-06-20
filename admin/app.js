@@ -12,8 +12,6 @@ const riskFilter = document.querySelector("#riskFilter");
 const logoutAdminButton = document.querySelector("#logoutAdminButton");
 const searchInput = document.querySelector("#searchInput");
 const sortBy = document.querySelector("#sortBy");
-const dateFrom = document.querySelector("#dateFrom");
-const dateTo = document.querySelector("#dateTo");
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -180,8 +178,6 @@ function getFilteredSubmissions() {
   const filter = riskFilter?.value || "all";
   const sort = sortBy?.value || "date";
   const term = normalizeText(searchInput?.value || "");
-  const from = dateFrom?.value ? new Date(`${dateFrom.value}T00:00:00`).getTime() : null;
-  const to = dateTo?.value ? new Date(`${dateTo.value}T23:59:59`).getTime() : null;
 
   let submissions = [...loadedSubmissions];
 
@@ -191,9 +187,6 @@ function getFilteredSubmissions() {
       return haystack.includes(term);
     });
   }
-
-  if (from !== null) submissions = submissions.filter((item) => new Date(item.submittedAt).getTime() >= from);
-  if (to !== null) submissions = submissions.filter((item) => new Date(item.submittedAt).getTime() <= to);
 
   if (filter === "high") {
     submissions = submissions.filter((item) => item.aiRiskAverage >= 35 || item.aiHighRiskCount > 0);
@@ -330,11 +323,34 @@ function renderSubmissionDetail(submission) {
   `;
 }
 
+function updateStatusChipCounts(allSubmissions) {
+  const counts = { all: allSubmissions.length, approved: 0, rejected: 0, review: 0 };
+  allSubmissions.forEach((item) => {
+    if (item.status === "Aprovado") counts.approved += 1;
+    else if (item.status === "Reprovado") counts.rejected += 1;
+    else counts.review += 1;
+  });
+  const set = (id, value) => { const el = document.querySelector(id); if (el) el.textContent = value; };
+  set("#chipCountAll", counts.all);
+  set("#chipCountApproved", counts.approved);
+  set("#chipCountRejected", counts.rejected);
+  set("#chipCountReview", counts.review);
+}
+
+function syncStatusChipsFromFilter() {
+  const value = riskFilter?.value || "all";
+  const activeChip = ["all", "approved", "rejected", "review"].includes(value) ? value : "all";
+  document.querySelectorAll("[data-status-chip]").forEach((chip) => {
+    chip.classList.toggle("active", chip.dataset.statusChip === activeChip);
+  });
+}
+
 function renderReview() {
   if (!reviewUnlocked) return;
   const allSubmissions = [...loadedSubmissions].sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
   const filteredSubmissions = getFilteredSubmissions();
   renderSummary(allSubmissions);
+  updateStatusChipCounts(allSubmissions);
   renderSubmissionList(filteredSubmissions);
   renderSubmissionDetail(filteredSubmissions.find((item) => item.id === selectedSubmissionId));
 }
@@ -737,7 +753,17 @@ function bindEvents() {
     window.location.href = `/api/admin/discord/start?return_to=${encodeURIComponent(returnTo)}`;
   });
   document.querySelector("#clearSubmissionsButton")?.addEventListener("click", async () => {
-    if (!confirm("Tem certeza que deseja apagar os envios salvos no banco?")) return;
+    const sure = confirm(
+      "ATENCAO: isso vai apagar TODOS os envios salvos e resetar o edital - " +
+      "todos os candidatos poderao enviar de novo. Essa acao NAO PODE SER DESFEITA.\n\n" +
+      "Deseja continuar?"
+    );
+    if (!sure) return;
+    const typed = prompt('Para confirmar, digite "APAGAR" (em letras maiusculas):');
+    if (typed !== "APAGAR") {
+      toast("Limpeza cancelada.", "info");
+      return;
+    }
     const response = await api("/api/admin/submissions", { method: "DELETE" });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
@@ -764,9 +790,17 @@ function bindEvents() {
   });
   searchInput?.addEventListener("input", () => renderReview());
   sortBy?.addEventListener("change", () => renderReview());
-  riskFilter?.addEventListener("change", () => renderReview());
-  dateFrom?.addEventListener("change", () => renderReview());
-  dateTo?.addEventListener("change", () => renderReview());
+  riskFilter?.addEventListener("change", () => {
+    syncStatusChipsFromFilter();
+    renderReview();
+  });
+  document.querySelector("#statusChips")?.addEventListener("click", (event) => {
+    const chip = event.target.closest("[data-status-chip]");
+    if (!chip) return;
+    if (riskFilter) riskFilter.value = chip.dataset.statusChip;
+    syncStatusChipsFromFilter();
+    renderReview();
+  });
   logoutAdminButton?.addEventListener("click", async () => {
     await api("/api/admin/logout", { method: "POST" }).catch(() => {});
     reviewUnlocked = false;

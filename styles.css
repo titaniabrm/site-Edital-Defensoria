@@ -1396,3 +1396,53 @@ footer {
   height: 116px;
   margin-top: 10px;
 }
+
+.credits a {
+  color: var(--gold-2);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.credits a:hover {
+  text-decoration: underline;
+}
+
+[data-theme="dark"] .credits a {
+  color: var(--gold);
+}
+
+/* ---- Chips de status (filtro rapido) no painel admin ---- */
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.status-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.status-chip span {
+  display: inline-block;
+  margin-left: 6px;
+  opacity: 0.75;
+}
+
+.status-chip.active {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff7df;
+}
+
+.status-chip.good.active { background: var(--success); border-color: var(--success); }
+.status-chip.bad.active { background: var(--danger); border-color: var(--danger); }
+.status-chip.warn.active { background: var(--warning); border-color: var(--warning); }
