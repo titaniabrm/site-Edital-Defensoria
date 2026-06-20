@@ -2,6 +2,37 @@ let selectedSubmissionId = null;
 let reviewUnlocked = false;
 let loadedSubmissions = [];
 
+// Badge no titulo da aba: avisa que chegaram envios novos enquanto o admin
+// estava em outra aba, sem precisar deixar o painel sempre em foco.
+const ORIGINAL_TITLE = document.title;
+let lastKnownSubmissionCount = null;
+let newSubmissionsSinceView = 0;
+
+function updateTabTitleBadge() {
+  document.title = newSubmissionsSinceView > 0
+    ? `(${newSubmissionsSinceView}) ${ORIGINAL_TITLE}`
+    : ORIGINAL_TITLE;
+}
+
+function noteSubmissionCount(count) {
+  if (lastKnownSubmissionCount === null) {
+    lastKnownSubmissionCount = count;
+    return;
+  }
+  if (count > lastKnownSubmissionCount && document.hidden) {
+    newSubmissionsSinceView += count - lastKnownSubmissionCount;
+    updateTabTitleBadge();
+  }
+  lastKnownSubmissionCount = count;
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && newSubmissionsSinceView > 0) {
+    newSubmissionsSinceView = 0;
+    updateTabTitleBadge();
+  }
+});
+
 const toastStack = document.querySelector("#toastStack");
 const reviewDashboard = document.querySelector("#reviewDashboard");
 const reviewLocked = document.querySelector("#reviewLocked");
@@ -362,6 +393,7 @@ async function loadAdminSubmissions() {
     throw new Error(data.error || "Nao foi possivel carregar o painel.");
   }
   loadedSubmissions = await response.json();
+  noteSubmissionCount(loadedSubmissions.length);
   renderReview();
 }
 
@@ -393,6 +425,7 @@ async function refreshSubmissionsQuietly() {
     const response = await api("/api/admin/submissions");
     if (!response.ok) return;
     loadedSubmissions = await response.json();
+    noteSubmissionCount(loadedSubmissions.length);
     renderReview();
   } catch {
     // mantem a lista atual em caso de falha temporaria
@@ -810,6 +843,9 @@ function bindEvents() {
     logoutAdminButton.disabled = true;
     if (activePollTimer) { clearInterval(activePollTimer); activePollTimer = null; }
     if (sessionRefreshTimer) { clearInterval(sessionRefreshTimer); sessionRefreshTimer = null; }
+    newSubmissionsSinceView = 0;
+    lastKnownSubmissionCount = null;
+    updateTabTitleBadge();
     toast("Sessao encerrada.", "success");
   });
 }
