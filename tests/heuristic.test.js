@@ -8,7 +8,10 @@ import {
   withinExamWindow,
   buildExamForSession,
   fnv1a,
-  mulberry32
+  mulberry32,
+  normalizeQuestionsInput,
+  answerVsModelSimilarity,
+  highlightSuspectHtml
 } from "../server.js";
 
 describe("heuristicReview", () => {
@@ -119,6 +122,47 @@ describe("buildExamForSession", () => {
       // gabarito (modelAnswer) nunca pode ir para o candidato
       expect(q.modelAnswer).toBeUndefined();
     });
+  });
+});
+
+describe("editor de perguntas (normalizeQuestionsInput)", () => {
+  it("reatribui ids em sequencia: objetivas 1..N, subjetivas continuam", () => {
+    const out = normalizeQuestionsInput({
+      objective: [
+        { text: "Q1", options: ["a", "b", "c", "d"], answer: 0 },
+        { text: "Q2", options: ["a", "b", "c", "d"], answer: 3 }
+      ],
+      subjective: [{ text: "S1", modelAnswer: "gab" }]
+    });
+    expect(out.objective.map((q) => q.id)).toEqual([1, 2]);
+    expect(out.subjective[0].id).toBe(3);
+  });
+
+  it("rejeita prova invalida", () => {
+    expect(() => normalizeQuestionsInput({ objective: [], subjective: [{ text: "x" }] })).toThrow();
+    expect(() => normalizeQuestionsInput({ objective: [{ text: "q", options: ["a", "b", "c"], answer: 0 }], subjective: [{ text: "s" }] })).toThrow();
+    expect(() => normalizeQuestionsInput({ objective: [{ text: "q", options: ["a", "b", "c", "d"], answer: 9 }], subjective: [{ text: "s" }] })).toThrow();
+  });
+});
+
+describe("comparacao com gabarito (answerVsModelSimilarity)", () => {
+  it("100% para texto identico, 0% sem sobreposicao, null sem gabarito", () => {
+    expect(answerVsModelSimilarity("prova autos defesa", "prova autos defesa")).toBe(100);
+    expect(answerVsModelSimilarity("nada a ver aqui", "prova autos contraditorio")).toBe(0);
+    expect(answerVsModelSimilarity("qualquer", null)).toBeNull();
+  });
+});
+
+describe("destaque de trechos suspeitos de IA (highlightSuspectHtml)", () => {
+  it("marca conectivos tipicos e escapa HTML perigoso", () => {
+    const r = highlightSuspectHtml("Defendi o cliente. Em suma, e importante ressaltar a lisura.");
+    expect(r.count).toBeGreaterThanOrEqual(1);
+    expect(r.html).toContain("ai-suspect");
+    const xss = highlightSuspectHtml("<script>alert(1)</script> em suma teste");
+    expect(xss.html).not.toContain("<script>");
+  });
+  it("nao marca texto natural curto", () => {
+    expect(highlightSuspectHtml("Defendi o cliente porque nao havia provas.").count).toBe(0);
   });
 });
 

@@ -140,6 +140,31 @@
               </div>
             </form>
           </div>
+
+          <div class="config-panel-block">
+            <h3>Banco de perguntas (editar a prova)</h3>
+            <p class="muted-hint">Edite as questões direto aqui, sem mexer no código. Altere antes de abrir o edital — mudar a prova com o edital aberto afeta quem está respondendo. Os envios já salvos guardam as perguntas da época.</p>
+            <div class="questions-editor">
+              <div class="questions-editor-head">
+                <h4>Questões objetivas <span class="pill" id="objectiveCount">0</span></h4>
+                <button type="button" class="secondary-button" id="addObjectiveButton">+ Adicionar objetiva</button>
+              </div>
+              <div id="objectiveEditor" class="questions-editor-list"></div>
+
+              <div class="questions-editor-head">
+                <h4>Questões subjetivas <span class="pill" id="subjectiveCount">0</span></h4>
+                <button type="button" class="secondary-button" id="addSubjectiveButton">+ Adicionar subjetiva</button>
+              </div>
+              <div id="subjectiveEditor" class="questions-editor-list"></div>
+
+              <div class="config-status" id="questionsStatus"></div>
+              <div class="config-actions">
+                <button type="button" class="primary-button" id="saveQuestionsButton">Salvar perguntas</button>
+                <button type="button" class="secondary-button" id="reloadQuestionsButton">Descartar alterações</button>
+                <button type="button" class="danger-button" id="resetQuestionsButton">Voltar às perguntas padrão</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="admin-tab-panel hidden" id="tab-candidates">

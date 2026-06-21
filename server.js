@@ -135,18 +135,59 @@ function shuffleWithSeed(items, seedString) {
 }
 
 function buildExamForSession(seed) {
-  const objectives = shuffleWithSeed(objectiveQuestions, `${seed}|q`).map((question) => {
+  const objectives = shuffleWithSeed(getObjectiveQuestions(), `${seed}|q`).map((question) => {
     const options = shuffleWithSeed(
       question.options.map((text, originalIndex) => ({ text, originalIndex })),
       `${seed}|q${question.id}|o`
     );
     return { id: question.id, text: question.text, options };
   });
-  const subjectives = subjectiveQuestions.map((q) => ({ id: q.id, text: q.text }));
+  const subjectives = getSubjectiveQuestions().map((q) => ({ id: q.id, text: q.text }));
   return { objectives, subjectives, seed };
 }
 
 let runtimeConfig = {};
+
+// As perguntas podem ser editadas no painel (salvas em runtimeConfig.questions).
+// Se nao houver nada salvo, cai nos arrays-padrao acima. Assim a banca troca a
+// prova sem precisar mexer no codigo nem fazer deploy.
+function getObjectiveQuestions() {
+  const q = runtimeConfig.questions?.objective;
+  return Array.isArray(q) && q.length ? q : objectiveQuestions;
+}
+function getSubjectiveQuestions() {
+  const q = runtimeConfig.questions?.subjective;
+  return Array.isArray(q) && q.length ? q : subjectiveQuestions;
+}
+
+// Valida e normaliza o que o painel envia ao editar a prova. Os ids sao
+// reatribuidos em sequencia: objetivas 1..N, subjetivas continuam N+1..M.
+function normalizeQuestionsInput(raw) {
+  const objRaw = Array.isArray(raw?.objective) ? raw.objective : [];
+  const subRaw = Array.isArray(raw?.subjective) ? raw.subjective : [];
+  if (!objRaw.length) throw new Error("Inclua ao menos 1 questao objetiva.");
+  if (!subRaw.length) throw new Error("Inclua ao menos 1 questao subjetiva.");
+  if (objRaw.length > 50 || subRaw.length > 50) throw new Error("Maximo de 50 questoes por tipo.");
+
+  const objective = objRaw.map((q, i) => {
+    const text = String(q?.text || "").trim().slice(0, 500);
+    const options = Array.isArray(q?.options) ? q.options.map((o) => String(o || "").trim().slice(0, 300)) : [];
+    const answer = Number(q?.answer);
+    if (!text) throw new Error(`Objetiva ${i + 1}: enunciado vazio.`);
+    if (options.length !== 4 || options.some((o) => !o)) throw new Error(`Objetiva ${i + 1}: precisa de 4 alternativas preenchidas.`);
+    if (!Number.isInteger(answer) || answer < 0 || answer > 3) throw new Error(`Objetiva ${i + 1}: marque a alternativa correta.`);
+    return { id: i + 1, text, answer, options };
+  });
+
+  const subjective = subRaw.map((q, i) => {
+    const text = String(q?.text || "").trim().slice(0, 800);
+    const modelAnswer = String(q?.modelAnswer || "").trim().slice(0, 2000);
+    if (!text) throw new Error(`Subjetiva ${i + 1}: enunciado vazio.`);
+    return { id: objective.length + i + 1, text, modelAnswer };
+  });
+
+  return { objective, subjective };
+}
 
 async function loadRuntimeConfig() {
   if (supabase) {
@@ -365,6 +406,57 @@ function renderLightMarkdown(text) {
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
   return html;
+}
+
+// Quanto a resposta do candidato se aproxima do gabarito (sobreposicao de
+// vocabulario, 0-100). E so uma referencia visual pra banca - nao decide nota.
+function tokenSet(text) {
+  return new Set(normalizeText(text).split(" ").filter(Boolean));
+}
+function answerVsModelSimilarity(answer, model) {
+  if (!model || !String(model).trim()) return null;
+  return Math.round(jaccard(tokenSet(answer), tokenSet(model)) * 100);
+}
+
+// Conectivos/expressoes tipicas de texto gerado por IA. Usado para destacar
+// trechos suspeitos na resposta subjetiva (sinal fraco, so para chamar atencao).
+const AI_SUSPECT_PHRASES = [
+  "e importante ressaltar", "e importante destacar", "vale ressaltar", "vale destacar",
+  "de forma clara e objetiva", "dessa forma", "dessa maneira", "desse modo",
+  "em suma", "em sintese", "em conclusao", "por fim", "alem disso", "ademais",
+  "sendo assim", "no que tange", "no que diz respeito", "no ambito", "cabe ressaltar",
+  "desempenha um papel", "e fundamental", "e essencial", "e crucial", "garantir a lisura",
+  "em primeiro lugar", "em segundo lugar", "conforme mencionado", "diante do exposto"
+];
+
+// Marca frases suspeitas: forte (conectivo tipico de IA) ou fraca (muito longa).
+// Tudo escapado antes de inserir as <mark>, entao a saida e segura como innerHTML.
+function highlightSuspectHtml(answer) {
+  const raw = String(answer || "");
+  if (!raw.trim()) return { html: "", count: 0 };
+  const parts = raw.split(/([.!?]+\s+)/);
+  let html = "";
+  let count = 0;
+  for (let i = 0; i < parts.length; i += 2) {
+    const sentence = parts[i] || "";
+    const sep = parts[i + 1] || "";
+    if (!sentence.trim()) { html += escapeHtmlForRender(sentence) + escapeHtmlForRender(sep); continue; }
+    const norm = normalizeText(sentence);
+    const hits = AI_SUSPECT_PHRASES.filter((p) => norm.includes(p));
+    const wordCount = norm.split(" ").filter(Boolean).length;
+    if (hits.length >= 1) {
+      count += 1;
+      const reason = `Conectivos tipicos de IA: ${hits.slice(0, 3).join(", ")}`;
+      html += `<mark class="ai-suspect" title="${escapeHtmlForRender(reason)}">${escapeHtmlForRender(sentence)}</mark>`;
+    } else if (wordCount >= 30) {
+      count += 1;
+      html += `<mark class="ai-suspect-soft" title="Frase muito longa/formal (${wordCount} palavras)">${escapeHtmlForRender(sentence)}</mark>`;
+    } else {
+      html += escapeHtmlForRender(sentence);
+    }
+    html += escapeHtmlForRender(sep);
+  }
+  return { html, count };
 }
 
 // ---- Webhook helpers ----
@@ -853,7 +945,7 @@ async function analyzeWithGroq(subjectiveAnswers) {
 }
 
 function calculateObjectiveAnswers(receivedAnswers) {
-  return objectiveQuestions.map((question) => {
+  return getObjectiveQuestions().map((question) => {
     const received = receivedAnswers.find((item) => Number(item.id) === question.id);
     const selected = Number(received?.selected);
     return {
@@ -890,7 +982,10 @@ export {
   createOAuthState,
   verifyOAuthState,
   isSessionAdmin,
-  getAllowedDiscord
+  getAllowedDiscord,
+  normalizeQuestionsInput,
+  answerVsModelSimilarity,
+  highlightSuspectHtml
 };
 
 function validateSubmission(body, session) {
@@ -916,10 +1011,10 @@ function validateSubmission(body, session) {
   if (!discordUsername || !identity.roblox?.trim() || !identity.tempoEb?.trim()) {
     throw new Error("Dados do candidato incompletos.");
   }
-  if (objectiveAnswers.length !== objectiveQuestions.length) {
+  if (objectiveAnswers.length !== getObjectiveQuestions().length) {
     throw new Error("Respostas objetivas incompletas.");
   }
-  if (subjectiveAnswers.length !== subjectiveQuestions.length || subjectiveAnswers.some((item) => countWords(item.answer) < 5)) {
+  if (subjectiveAnswers.length !== getSubjectiveQuestions().length || subjectiveAnswers.some((item) => countWords(item.answer) < 5)) {
     throw new Error("Respostas subjetivas incompletas.");
   }
 
@@ -1536,10 +1631,12 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
         roblox: submission.identity?.roblox || "",
         tempoEb: submission.identity?.tempoEb || ""
       },
+      // So revela acerto/erro e a alternativa correta DEPOIS da decisao.
       objectiveAnswers: (submission.objectiveAnswers || []).map((a) => ({
         id: a.id,
         question: a.question,
-        selectedText: a.selectedText
+        selectedText: a.selectedText,
+        ...(decided ? { isCorrect: a.isCorrect, correctText: a.correctText } : {})
       })),
       subjectiveAnswers: (submission.subjectiveAnswers || []).map((a) => ({
         id: a.id,
@@ -1552,6 +1649,12 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
       payload.performancePercent = submission.performancePercent;
       payload.objectiveScore = submission.objectiveScore;
       payload.objectiveTotal = submission.objectiveTotal;
+      // Nota manual da banca (0-10), se foi atribuida.
+      if (submission.manualGrade != null) payload.manualGrade = submission.manualGrade;
+      // Observacao que a banca escreveu ao decidir (mensagem para o candidato).
+      const history = Array.isArray(submission.statusHistory) ? submission.statusHistory : [];
+      const lastNote = [...history].reverse().find((h) => h.note && h.note.trim());
+      payload.feedback = lastNote ? lastNote.note : "";
     }
     res.json(payload);
   } catch (error) {
@@ -1586,7 +1689,9 @@ app.get("/api/admin/config", requireAdmin, async (req, res) => {
     theme: getThemeConfig(),
     hcaptchaConfigured: Boolean(HCAPTCHA_SECRET),
     isOpen: withinExamWindow(),
-    serverNow: new Date().toISOString()
+    serverNow: new Date().toISOString(),
+    questions: { objective: getObjectiveQuestions(), subjective: getSubjectiveQuestions() },
+    usingDefaultQuestions: !(Array.isArray(runtimeConfig.questions?.objective) && runtimeConfig.questions.objective.length)
   });
 });
 
@@ -1631,6 +1736,14 @@ app.patch("/api/admin/config", requireAdmin, async (req, res) => {
     }
     if (body.maintenance !== undefined) {
       next.maintenanceMode = Boolean(body.maintenance);
+    }
+    if (body.questions && typeof body.questions === "object") {
+      // "reset" => volta pras perguntas-padrao do codigo.
+      if (body.questions.reset === true) {
+        delete next.questions;
+      } else {
+        next.questions = normalizeQuestionsInput(body.questions);
+      }
     }
     if (body.theme && typeof body.theme === "object") {
       next.theme = {
@@ -2049,7 +2162,7 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
 
     const objectiveAnswers = calculateObjectiveAnswers(valid.objectiveAnswers);
     const objectiveScore = objectiveAnswers.filter((item) => item.isCorrect).length;
-    const objectiveTotal = objectiveQuestions.length;
+    const objectiveTotal = getObjectiveQuestions().length;
     const performancePercent = Math.round((objectiveScore / objectiveTotal) * 10000) / 100;
     const aiReview = await analyzeWithGroq(valid.subjectiveAnswers);
     // Toda nova submissao entra como "Em analise" - so o admin define o
@@ -2148,16 +2261,23 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
   try {
     const submissions = await listSubmissions();
     // Mapa id -> gabarito sugerido, so para a banca comparar no painel.
-    const modelById = new Map(subjectiveQuestions.map((q) => [Number(q.id), q.modelAnswer]));
-    // Anexa a versao renderizada das respostas subjetivas para a banca ler
-    // com formatacao (negrito/italico/lista) sem precisar renderizar no client,
-    // e o gabarito de referencia de cada questao.
+    const modelById = new Map(getSubjectiveQuestions().map((q) => [Number(q.id), q.modelAnswer]));
+    // Anexa, para a banca: a resposta com formatacao, o gabarito de referencia,
+    // o quanto a resposta se aproxima do gabarito (modelSimilarity) e os trechos
+    // suspeitos de IA destacados (suspectHtml/suspectCount).
     submissions.forEach((s) => {
-      s.subjectiveAnswers = (s.subjectiveAnswers || []).map((a) => ({
-        ...a,
-        answerHtml: renderLightMarkdown(a.answer),
-        modelAnswer: modelById.get(Number(a.id)) || null
-      }));
+      s.subjectiveAnswers = (s.subjectiveAnswers || []).map((a) => {
+        const modelAnswer = modelById.get(Number(a.id)) || null;
+        const suspect = highlightSuspectHtml(a.answer);
+        return {
+          ...a,
+          answerHtml: renderLightMarkdown(a.answer),
+          modelAnswer,
+          modelSimilarity: answerVsModelSimilarity(a.answer, modelAnswer),
+          suspectHtml: suspect.html,
+          suspectCount: suspect.count
+        };
+      });
     });
     res.json(submissions);
   } catch (error) {

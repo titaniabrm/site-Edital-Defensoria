@@ -362,6 +362,20 @@ function renderSubmissionDetail(submission) {
     const modelAnswer = answer.modelAnswer
       ? `<details class="model-answer"><summary>📋 Gabarito sugerido</summary><p>${escapeHtml(answer.modelAnswer)}</p></details>`
       : "";
+    // Pilula de proximidade com o gabarito (verde alto / amarelo medio / cinza baixo).
+    let simPill = "";
+    if (Number.isFinite(answer.modelSimilarity)) {
+      const s = answer.modelSimilarity;
+      const cls = s >= 45 ? "good" : s >= 25 ? "warn" : "";
+      simPill = `<span class="pill ${cls}" title="Sobreposicao de vocabulario com o gabarito">${s}% do gabarito</span>`;
+    }
+    // Trechos suspeitos de IA (se houver), num toggle separado.
+    const suspectBlock = answer.suspectCount > 0
+      ? `<details class="suspect-box"><summary>🤖 ${answer.suspectCount} trecho(s) suspeito(s) de IA</summary><div class="answer-text suspect-text">${answer.suspectHtml}</div></details>`
+      : "";
+    const suspectPill = answer.suspectCount > 0
+      ? `<span class="pill bad" title="Frases com cara de texto gerado por IA">🤖 ${answer.suspectCount} trecho(s) IA</span>`
+      : "";
     return `
       <div class="answer-review">
         <span>Questao ${answer.id} - ${answer.aiReview.wordCount} palavras - variedade ${answer.aiReview.uniqueRatio}%</span>
@@ -370,9 +384,12 @@ function renderSubmissionDetail(submission) {
         <div class="submission-meta">
           <span class="pill ${risk.className}">${risk.text}</span>
           <span class="pill">${answer.aiReview.score}% risco</span>
+          ${simPill}
+          ${suspectPill}
           ${timeUsed}
           ${pasteFlag}
         </div>
+        ${suspectBlock}
         ${modelAnswer}
         ${flags}
       </div>
@@ -1103,8 +1120,138 @@ async function loadConfig() {
       const maintInfo = cfg.maintenance ? " | MODO MANUTENCAO ATIVO" : "";
       status.textContent = `Edital ${cfg.isOpen ? "ABERTO" : "FECHADO"} agora. ${captchaInfo}${maintInfo}.`;
     }
+    // Carrega as perguntas no editor (clona pra nao mexer no objeto da resposta).
+    if (cfg.questions) {
+      questionsState = {
+        objective: (cfg.questions.objective || []).map((q) => ({ text: q.text, answer: q.answer, options: [...(q.options || [])] })),
+        subjective: (cfg.questions.subjective || []).map((q) => ({ text: q.text, modelAnswer: q.modelAnswer || "" }))
+      };
+      usingDefaultQuestions = Boolean(cfg.usingDefaultQuestions);
+      renderQuestionsEditor();
+    }
   } catch (error) {
     if (status) status.textContent = error.message;
+  }
+}
+
+// ---- Editor de perguntas (banco de questoes editavel pelo painel) ----
+let questionsState = { objective: [], subjective: [] };
+let usingDefaultQuestions = true;
+
+function renderQuestionsEditor() {
+  const objWrap = document.querySelector("#objectiveEditor");
+  const subWrap = document.querySelector("#subjectiveEditor");
+  if (!objWrap || !subWrap) return;
+
+  objWrap.innerHTML = questionsState.objective.map((q, i) => `
+    <div class="question-edit-card" data-type="objective" data-index="${i}">
+      <div class="question-edit-top">
+        <strong>Objetiva ${i + 1}</strong>
+        <button type="button" class="link-button danger" data-remove-question="objective" data-index="${i}">remover</button>
+      </div>
+      <textarea class="q-text" rows="2" placeholder="Enunciado da questao">${escapeHtml(q.text || "")}</textarea>
+      ${[0, 1, 2, 3].map((oi) => `
+        <label class="q-option">
+          <input type="radio" name="correct-${i}" class="q-correct" value="${oi}" ${Number(q.answer) === oi ? "checked" : ""} title="Marcar como correta">
+          <input type="text" class="q-opt" data-oi="${oi}" placeholder="Alternativa ${String.fromCharCode(97 + oi)}" value="${escapeHtml(q.options?.[oi] || "")}">
+        </label>
+      `).join("")}
+    </div>
+  `).join("") || `<div class="empty-state">Nenhuma objetiva. Clique em "Adicionar objetiva".</div>`;
+
+  subWrap.innerHTML = questionsState.subjective.map((q, i) => `
+    <div class="question-edit-card" data-type="subjective" data-index="${i}">
+      <div class="question-edit-top">
+        <strong>Subjetiva ${questionsState.objective.length + i + 1}</strong>
+        <button type="button" class="link-button danger" data-remove-question="subjective" data-index="${i}">remover</button>
+      </div>
+      <textarea class="q-text" rows="2" placeholder="Enunciado da questao">${escapeHtml(q.text || "")}</textarea>
+      <textarea class="q-model" rows="2" placeholder="Gabarito sugerido (so a banca ve)">${escapeHtml(q.modelAnswer || "")}</textarea>
+    </div>
+  `).join("") || `<div class="empty-state">Nenhuma subjetiva. Clique em "Adicionar subjetiva".</div>`;
+
+  const objCount = document.querySelector("#objectiveCount");
+  const subCount = document.querySelector("#subjectiveCount");
+  if (objCount) objCount.textContent = questionsState.objective.length;
+  if (subCount) subCount.textContent = questionsState.subjective.length;
+  const qStatus = document.querySelector("#questionsStatus");
+  if (qStatus) qStatus.textContent = usingDefaultQuestions ? "Usando as perguntas padrão do sistema." : "Usando perguntas personalizadas.";
+}
+
+// Le os valores digitados no DOM de volta pro estado (antes de add/remover/salvar
+// pra nao perder edicoes em andamento).
+function syncQuestionsFromDom() {
+  document.querySelectorAll('#objectiveEditor .question-edit-card').forEach((card) => {
+    const i = Number(card.dataset.index);
+    if (!questionsState.objective[i]) return;
+    questionsState.objective[i].text = card.querySelector(".q-text")?.value || "";
+    questionsState.objective[i].options = [...card.querySelectorAll(".q-opt")].map((el) => el.value);
+    const checked = card.querySelector(".q-correct:checked");
+    questionsState.objective[i].answer = checked ? Number(checked.value) : 0;
+  });
+  document.querySelectorAll('#subjectiveEditor .question-edit-card').forEach((card) => {
+    const i = Number(card.dataset.index);
+    if (!questionsState.subjective[i]) return;
+    questionsState.subjective[i].text = card.querySelector(".q-text")?.value || "";
+    questionsState.subjective[i].modelAnswer = card.querySelector(".q-model")?.value || "";
+  });
+}
+
+function addObjectiveQuestion() {
+  syncQuestionsFromDom();
+  questionsState.objective.push({ text: "", answer: 0, options: ["", "", "", ""] });
+  renderQuestionsEditor();
+}
+
+function addSubjectiveQuestion() {
+  syncQuestionsFromDom();
+  questionsState.subjective.push({ text: "", modelAnswer: "" });
+  renderQuestionsEditor();
+}
+
+function removeQuestion(type, index) {
+  syncQuestionsFromDom();
+  questionsState[type].splice(index, 1);
+  renderQuestionsEditor();
+}
+
+async function saveQuestions() {
+  syncQuestionsFromDom();
+  const qStatus = document.querySelector("#questionsStatus");
+  if (!questionsState.objective.length || !questionsState.subjective.length) {
+    if (qStatus) qStatus.textContent = "Precisa de ao menos 1 objetiva e 1 subjetiva.";
+    return;
+  }
+  try {
+    const res = await api("/api/admin/config", {
+      method: "PATCH",
+      body: JSON.stringify({ questions: questionsState })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Falha ao salvar perguntas.");
+    toast("Perguntas salvas. A prova foi atualizada.", "success");
+    await loadConfig();
+  } catch (error) {
+    if (qStatus) qStatus.textContent = error.message;
+    toast(error.message, "error");
+  }
+}
+
+async function resetQuestions() {
+  const ok = await customConfirm("Voltar às perguntas padrão do sistema? Suas perguntas personalizadas serão descartadas.", {
+    eyebrow: "Banco de perguntas",
+    title: "Restaurar padrão",
+    confirmLabel: "Restaurar",
+    danger: true
+  });
+  if (!ok) return;
+  try {
+    const res = await api("/api/admin/config", { method: "PATCH", body: JSON.stringify({ questions: { reset: true } }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao restaurar.");
+    toast("Perguntas padrão restauradas.", "success");
+    await loadConfig();
+  } catch (error) {
+    toast(error.message, "error");
   }
 }
 
@@ -1266,6 +1413,16 @@ function bindEvents() {
   document.querySelector("#themeForm")?.addEventListener("submit", saveTheme);
   document.querySelector("#resetThemeButton")?.addEventListener("click", resetTheme);
   document.querySelector("#previewThemeButton")?.addEventListener("click", previewTheme);
+  // Editor de perguntas
+  document.querySelector("#addObjectiveButton")?.addEventListener("click", addObjectiveQuestion);
+  document.querySelector("#addSubjectiveButton")?.addEventListener("click", addSubjectiveQuestion);
+  document.querySelector("#saveQuestionsButton")?.addEventListener("click", saveQuestions);
+  document.querySelector("#reloadQuestionsButton")?.addEventListener("click", loadConfig);
+  document.querySelector("#resetQuestionsButton")?.addEventListener("click", resetQuestions);
+  document.querySelector("#tab-config")?.addEventListener("click", (event) => {
+    const rm = event.target.closest("[data-remove-question]");
+    if (rm) removeQuestion(rm.dataset.removeQuestion, Number(rm.dataset.index));
+  });
   submissionDetail?.addEventListener("click", handleSubmissionDetailClick);
   document.querySelector("#closeCompare")?.addEventListener("click", () => {
     document.querySelector("#compareModal")?.classList.add("hidden");

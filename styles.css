@@ -1983,3 +1983,181 @@ select:focus {
   height: 80px;
   margin-top: 8px;
 }
+
+/* =============================================
+   Editor de perguntas (banco de questoes no painel)
+   ============================================= */
+.questions-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 16px 0 8px;
+}
+.questions-editor-head h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--navy);
+}
+[data-theme="dark"] .questions-editor-head h4 { color: #fff; }
+.questions-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.question-edit-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.question-edit-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+.question-edit-card textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.q-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.q-option input[type="radio"] {
+  width: auto;
+  flex-shrink: 0;
+  accent-color: var(--success);
+}
+.q-option .q-opt {
+  flex: 1;
+}
+.link-button.danger {
+  color: var(--danger);
+}
+
+/* Pilula/similaridade com gabarito ja usa .pill .good/.warn */
+
+/* Trechos suspeitos de IA destacados */
+mark.ai-suspect {
+  background: rgba(183, 61, 53, 0.28);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+mark.ai-suspect-soft {
+  background: rgba(185, 117, 24, 0.22);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+.suspect-box {
+  margin-top: 8px;
+}
+.suspect-box summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+.suspect-text {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-size: 0.86rem;
+}
+[data-theme="dark"] .suspect-text { background: rgba(255, 255, 255, 0.05); }
+
+/* =============================================
+   Resultado/feedback do candidato
+   ============================================= */
+.result-feedback {
+  margin: 16px 0;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+.result-feedback.approved {
+  background: rgba(40, 115, 85, 0.1);
+  border-color: rgba(40, 115, 85, 0.4);
+}
+.result-feedback.rejected {
+  background: rgba(183, 61, 53, 0.08);
+  border-color: rgba(183, 61, 53, 0.35);
+}
+.feedback-headline {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+.feedback-grades {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.feedback-grade {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 110px;
+}
+.feedback-grade span {
+  font-size: 0.74rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.feedback-grade strong {
+  font-size: 1.2rem;
+  color: var(--navy);
+}
+[data-theme="dark"] .feedback-grade strong { color: #fff; }
+.feedback-note {
+  margin-top: 6px;
+}
+.feedback-note-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.feedback-note p {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-left: 3px solid var(--gold);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
+
+/* Marcas de acerto/erro nas objetivas (feedback do candidato) */
+.grade-mark {
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.grade-mark.good { color: var(--success); background: rgba(40, 115, 85, 0.14); }
+.grade-mark.bad { color: var(--danger); background: rgba(183, 61, 53, 0.14); }
+.review-item.is-correct { border-left: 3px solid var(--success); }
+.review-item.is-wrong { border-left: 3px solid var(--danger); }
+.correct-answer {
+  color: var(--success);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+[data-theme="dark"] .correct-answer { color: #6cdba0; }

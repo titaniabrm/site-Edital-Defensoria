@@ -770,12 +770,21 @@ function statusLabelFor(status) {
 }
 
 function renderMyAnswersList(objectiveItems, subjectiveItems) {
-  const objRows = objectiveItems.map((item, i) => `
-    <div class="review-item">
-      <strong>${i + 1}.</strong> ${escapeHtml(item.question)}<br>
-      <span>${escapeHtml(item.selectedText || "Nao respondida")}</span>
-    </div>
-  `).join("");
+  const objRows = objectiveItems.map((item, i) => {
+    // Quando a banca ja decidiu, o servidor manda isCorrect + a alternativa
+    // correta - mostramos certo/errado e o gabarito da objetiva.
+    const graded = typeof item.isCorrect === "boolean";
+    const mark = graded ? (item.isCorrect ? `<span class="grade-mark good">✓ certa</span>` : `<span class="grade-mark bad">✗ errada</span>`) : "";
+    const correction = graded && !item.isCorrect && item.correctText
+      ? `<br><span class="correct-answer">Resposta correta: ${escapeHtml(item.correctText)}</span>`
+      : "";
+    return `
+      <div class="review-item${graded ? (item.isCorrect ? " is-correct" : " is-wrong") : ""}">
+        <strong>${i + 1}.</strong> ${escapeHtml(item.question)} ${mark}<br>
+        <span>Sua resposta: ${escapeHtml(item.selectedText || "Nao respondida")}</span>${correction}
+      </div>
+    `;
+  }).join("");
   const subjRows = subjectiveItems.map((item, i) => {
     // Quando o servidor anexa answerHtml (markdown renderizado), usamos ele.
     // Caso contrario (envio recem feito no client), escapa o texto cru.
@@ -809,16 +818,41 @@ async function loadMyResults() {
     // So mostra pontuacao depois que o admin decidiu (Aprovado/Reprovado).
     // Enquanto "Em analise", mantemos o candidato sem ver nota nem desempenho.
     confirmationText.textContent = data.decided
-      ? `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Pontuação objetiva: ${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%).`
+      ? `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Veja o resultado completo abaixo.`
       : `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Aguarde a análise da banca — o resultado aparece aqui quando estiver pronto.`;
     const pill = document.querySelector("#myStatusPill");
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
+    renderResultFeedback(data);
     document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(data.objectiveAnswers, data.subjectiveAnswers);
     confirmation.classList.remove("hidden");
   } catch {
     toast("Não foi possível carregar suas respostas.", "error");
   }
+}
+
+// Monta o painel de resultado/feedback do candidato (so apos a decisao).
+function renderResultFeedback(data) {
+  const box = document.querySelector("#resultFeedback");
+  if (!box) return;
+  if (!data.decided) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  const approved = data.status === "Aprovado";
+  const grade = (data.manualGrade != null) ? `<div class="feedback-grade"><span>Nota da banca</span><strong>${data.manualGrade}/10</strong></div>` : "";
+  const objScore = `<div class="feedback-grade"><span>Objetivas</span><strong>${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%)</strong></div>`;
+  const note = data.feedback && data.feedback.trim()
+    ? `<div class="feedback-note"><span class="feedback-note-label">Observação da banca</span><p>${escapeHtml(data.feedback)}</p></div>`
+    : "";
+  box.className = `result-feedback ${approved ? "approved" : "rejected"}`;
+  box.innerHTML = `
+    <div class="feedback-headline">${approved ? "✅ Você foi aprovado!" : "❌ Resultado: não aprovado"}</div>
+    <div class="feedback-grades">${objScore}${grade}</div>
+    ${note}
+  `;
+  box.classList.remove("hidden");
 }
 
 async function submitForm() {
