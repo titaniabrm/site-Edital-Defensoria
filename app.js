@@ -134,7 +134,6 @@ function applySessionUI() {
     }
     if (loggedDiscordLabel) loggedDiscordLabel.textContent = `@${currentSession.username}`;
     painelButton?.classList.toggle("hidden", !currentSession.isAdmin);
-    toggleWatermark(true);
   } else {
     loginGate?.classList.remove("hidden");
     candidateSections.forEach((el) => el.classList.add("hidden"));
@@ -142,7 +141,6 @@ function applySessionUI() {
     logoutButton?.classList.add("hidden");
     userBadge?.classList.add("hidden");
     painelButton?.classList.add("hidden");
-    toggleWatermark(false);
   }
 }
 
@@ -805,7 +803,6 @@ function showOnlyMyResults() {
   document.querySelectorAll(".candidate-only").forEach((el) => {
     if (el.id !== "confirmation") el.classList.add("hidden");
   });
-  toggleWatermark(false);
 }
 
 async function loadMyResults() {
@@ -1060,20 +1057,6 @@ function registerServiceWorker() {
   });
 }
 
-// ---- Marca d'agua com o @username sobre a prova (anti-print/vazamento) ----
-function toggleWatermark(show) {
-  const wm = document.querySelector("#examWatermark");
-  if (!wm) return;
-  if (show && currentSession.authenticated) {
-    const label = `@${currentSession.username || "candidato"}`;
-    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><text x='50%' y='50%' fill='rgba(120,120,120,0.16)' font-size='18' font-family='Inter, sans-serif' transform='rotate(-24 160 90)' text-anchor='middle'>${label}</text></svg>`;
-    wm.style.backgroundImage = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
-    wm.classList.remove("hidden");
-  } else {
-    wm.classList.add("hidden");
-  }
-}
-
 // ---- Acessibilidade: tamanho do texto, alto contraste, leitura facilitada ----
 function applyA11y(prefs) {
   const root = document.documentElement;
@@ -1156,7 +1139,6 @@ function showMaintenancePanel() {
   document.querySelector("#maintenancePanel")?.classList.remove("hidden");
   document.querySelector("#loginGate")?.classList.add("hidden");
   document.querySelectorAll(".candidate-only").forEach((el) => el.classList.add("hidden"));
-  toggleWatermark(false);
 }
 
 function showPreExamPanel(startIso) {
@@ -1164,7 +1146,6 @@ function showPreExamPanel(startIso) {
   if (!panel) return;
   panel.classList.remove("hidden");
   document.querySelectorAll(".candidate-only").forEach((el) => el.classList.add("hidden"));
-  toggleWatermark(false);
   const sub = document.querySelector("#preExamSubtitle");
   const countdown = document.querySelector("#preExamCountdown");
   if (sub) sub.textContent = `Abertura em ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(startIso))}`;

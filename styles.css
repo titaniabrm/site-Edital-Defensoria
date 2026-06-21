@@ -2165,18 +2165,6 @@ mark.ai-suspect-soft {
 [data-theme="dark"] .correct-answer { color: #6cdba0; }
 
 /* =============================================
-   Marca d'agua sobre a prova (anti-print)
-   ============================================= */
-.exam-watermark {
-  position: fixed;
-  inset: 0;
-  z-index: 4;
-  pointer-events: none;
-  background-repeat: repeat;
-  background-position: center;
-}
-
-/* =============================================
    Acessibilidade: menu de ajustes
    ============================================= */
 .a11y-wrap {
