@@ -238,7 +238,7 @@ const pasteFlags = new Map();     // questionId -> true
 
 function toast(message, kind = "info", title = "") {
   if (!toastStack) {
-    if (kind === "error") alert(message);
+    if (kind === "error") customAlert(message);
     return;
   }
   const node = document.createElement("div");
@@ -251,6 +251,78 @@ function toast(message, kind = "info", title = "") {
     setTimeout(() => node.remove(), 220);
   }, 4200);
 }
+
+// ---- Dialogo customizado (substitui confirm()/prompt()/alert() nativos) ----
+const dialogModal = document.querySelector("#dialogModal");
+const dialogModalEyebrow = document.querySelector("#dialogModalEyebrow");
+const dialogModalTitle = document.querySelector("#dialogModalTitle");
+const dialogModalMessage = document.querySelector("#dialogModalMessage");
+const dialogModalInput = document.querySelector("#dialogModalInput");
+const dialogModalCancel = document.querySelector("#dialogModalCancel");
+const dialogModalConfirm = document.querySelector("#dialogModalConfirm");
+let dialogResolve = null;
+
+function closeDialog(result) {
+  dialogModal?.classList.add("hidden");
+  if (dialogResolve) {
+    const resolve = dialogResolve;
+    dialogResolve = null;
+    resolve(result);
+  }
+}
+
+function openDialog({
+  eyebrow = "Atencao",
+  title = "Confirmar",
+  message = "",
+  danger = false,
+  withInput = false,
+  inputValue = "",
+  inputPlaceholder = "",
+  confirmLabel = "Confirmar",
+  cancelLabel = "Cancelar",
+  hideCancel = false
+}) {
+  if (!dialogModal) return Promise.resolve(withInput ? null : false);
+  dialogModalEyebrow.textContent = eyebrow;
+  dialogModalTitle.textContent = title;
+  dialogModalMessage.textContent = message;
+  dialogModalConfirm.textContent = confirmLabel;
+  dialogModalConfirm.className = danger ? "danger-button" : "primary-button";
+  dialogModalCancel.textContent = cancelLabel;
+  dialogModalCancel.classList.toggle("hidden", hideCancel);
+  if (withInput) {
+    dialogModalInput.classList.remove("hidden");
+    dialogModalInput.value = inputValue;
+    dialogModalInput.placeholder = inputPlaceholder;
+  } else {
+    dialogModalInput.classList.add("hidden");
+  }
+  dialogModal.classList.remove("hidden");
+  if (withInput) setTimeout(() => dialogModalInput.focus(), 50);
+  return new Promise((resolve) => { dialogResolve = resolve; });
+}
+
+function customConfirm(message, opts = {}) {
+  return openDialog({ message, ...opts }).then((result) => result === true);
+}
+
+function customPrompt(message, opts = {}) {
+  return openDialog({ message, withInput: true, ...opts });
+}
+
+function customAlert(message, opts = {}) {
+  return openDialog({ message, hideCancel: true, confirmLabel: "OK", ...opts });
+}
+
+dialogModalCancel?.addEventListener("click", () => closeDialog(dialogModalInput.classList.contains("hidden") ? false : null));
+dialogModalConfirm?.addEventListener("click", () => closeDialog(dialogModalInput.classList.contains("hidden") ? true : dialogModalInput.value));
+dialogModal?.addEventListener("click", (event) => {
+  if (event.target === dialogModal) closeDialog(dialogModalInput.classList.contains("hidden") ? false : null);
+});
+dialogModalInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") dialogModalConfirm.click();
+});
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -304,13 +376,13 @@ function tickClock() {
 
     if (remaining > 0 && remaining <= 5 * 60 * 1000 && !warned5min) {
       warned5min = true;
-      toast("Faltam 5 minutos para o fim do edital. Finalize seu envio!", "warn", "Atencao");
+      toast("Faltam 5 minutos para o fim do edital. Finalize seu envio!", "warn", "Atenção");
     }
     if (remaining <= 0 && !examClosedLocally) {
       examClosedLocally = true;
       const submit = form?.querySelector('button[type="submit"]');
       if (submit) submit.disabled = true;
-      toast("O periodo do edital terminou.", "error", "Encerrado");
+      toast("O período do edital terminou.", "error", "Encerrado");
     }
   }
   timeElapsed.textContent = `Tempo: ${mm}:${ss}${countdown}`;
@@ -498,8 +570,14 @@ async function loadServerDraftIfNewer() {
   }
 }
 
-function clearDraft() {
-  if (!confirm("Apagar o rascunho atual e limpar todas as respostas?")) return;
+async function clearDraft() {
+  const ok = await customConfirm("Apagar o rascunho atual e limpar todas as respostas?", {
+    eyebrow: "Confirmacao",
+    title: "Apagar rascunho",
+    confirmLabel: "Apagar",
+    danger: true
+  });
+  if (!ok) return;
   localStorage.removeItem(DRAFT_KEY);
   form.reset();
   pasteFlags.clear();
@@ -589,7 +667,7 @@ function jumpToNextPending() {
     return !String(field.value || "").trim();
   });
   if (!pending) {
-    toast("Todas as questoes ja foram respondidas.", "success");
+    toast("Todas as questões já foram respondidas.", "success");
     return;
   }
   const card = pending.closest(".question-card") || pending.closest("label") || pending;
@@ -680,7 +758,7 @@ function validateForm() {
 function statusLabelFor(status) {
   if (status === "Aprovado") return { text: "Aprovado", className: "good" };
   if (status === "Reprovado") return { text: "Reprovado", className: "bad" };
-  return { text: "Em analise", className: "warn" };
+  return { text: "Em análise", className: "warn" };
 }
 
 function renderMyAnswersList(objectiveItems, subjectiveItems) {
@@ -718,30 +796,30 @@ async function loadMyResults() {
     showOnlyMyResults();
     const status = statusLabelFor(data.status);
     document.querySelector("#confirmationTitle").textContent = data.decided
-      ? "Resultado da sua avaliacao"
-      : "Avaliacao em analise pela banca";
+      ? "Resultado da sua avaliação"
+      : "Avaliação em análise pela banca";
     // So mostra pontuacao depois que o admin decidiu (Aprovado/Reprovado).
     // Enquanto "Em analise", mantemos o candidato sem ver nota nem desempenho.
     confirmationText.textContent = data.decided
-      ? `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Pontuacao objetiva: ${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%).`
-      : `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Aguarde a analise da banca - o resultado aparece aqui quando estiver pronto.`;
+      ? `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Pontuação objetiva: ${data.objectiveScore}/${data.objectiveTotal} (${data.performancePercent}%).`
+      : `Enviado em ${new Date(data.submittedAt).toLocaleString("pt-BR")}. Aguarde a análise da banca — o resultado aparece aqui quando estiver pronto.`;
     const pill = document.querySelector("#myStatusPill");
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
     document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(data.objectiveAnswers, data.subjectiveAnswers);
     confirmation.classList.remove("hidden");
   } catch {
-    toast("Nao foi possivel carregar suas respostas.", "error");
+    toast("Não foi possível carregar suas respostas.", "error");
   }
 }
 
 async function submitForm() {
   if (!validateForm()) {
-    toast("Preencha todas as questoes antes de enviar.", "error", "Faltam respostas");
+    toast("Preencha todas as questões antes de enviar.", "error", "Faltam respostas");
     return;
   }
   if (localStorage.getItem(SUBMITTED_KEY)) {
-    toast("Voce ja enviou um formulario nesta sessao.", "error", "Envio duplicado");
+    toast("Você já enviou um formulário nesta sessão.", "error", "Envio duplicado");
     return;
   }
 
@@ -773,7 +851,7 @@ async function submitForm() {
     });
 
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "Nao foi possivel enviar as respostas.");
+    if (!response.ok) throw new Error(result.error || "Não foi possível enviar as respostas.");
 
     localStorage.removeItem(DRAFT_KEY);
     localStorage.setItem(SUBMITTED_KEY, result.id || "1");
@@ -782,14 +860,14 @@ async function submitForm() {
     confirmation.classList.remove("hidden");
     const greetingName = currentSession.username ? `@${currentSession.username}` : "Candidato";
     const status = statusLabelFor(result.status || "Em analise");
-    document.querySelector("#confirmationTitle").textContent = "Avaliacao em analise pela banca";
-    confirmationText.textContent = `${greetingName}, sua avaliacao foi registrada. Aguarde a analise da banca - o resultado aparece aqui quando estiver pronto.`;
+    document.querySelector("#confirmationTitle").textContent = "Avaliação em análise pela banca";
+    confirmationText.textContent = `${greetingName}, sua avaliação foi registrada. Aguarde a análise da banca — o resultado aparece aqui quando estiver pronto.`;
     const pill = document.querySelector("#myStatusPill");
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
     document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(objectiveItems, subjectiveItems);
     confirmation.scrollIntoView({ behavior: "smooth", block: "center" });
-    toast("Avaliacao enviada.", "success", "Tudo certo");
+    toast("Avaliação enviada.", "success", "Tudo certo");
   } catch (error) {
     toast(error.message, "error", "Erro no envio");
     resetCaptcha();
@@ -845,7 +923,7 @@ function bindEvents() {
   document.querySelector("#saveExitButton")?.addEventListener("click", async () => {
     saveDraft();
     dirtyDraft = false;
-    toast("Rascunho salvo. Encerrando sessao...", "success");
+    toast("Rascunho salvo. Encerrando sessão...", "success");
     try {
       await fetch("/api/admin/logout", { method: "POST", credentials: "same-origin" });
     } catch {}
@@ -907,7 +985,7 @@ function renderExamClosedBanner(start, end) {
   if (!banner) return;
   const fmt = (iso) => new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
   banner.classList.remove("hidden");
-  banner.innerHTML = `<strong>Edital fora do periodo.</strong> Janela oficial: ${fmt(start)} a ${fmt(end)}.`;
+  banner.innerHTML = `<strong>Edital fora do período.</strong> Janela oficial: ${fmt(start)} a ${fmt(end)}.`;
   const submit = form?.querySelector('button[type="submit"]');
   if (submit) submit.disabled = true;
 }
@@ -990,7 +1068,7 @@ async function boot() {
   try {
     await loadExamFromServer();
   } catch (error) {
-    if (error.message?.includes("manutencao")) { showMaintenancePanel(); return; }
+    if (error.message?.includes("manutenção")) { showMaintenancePanel(); return; }
     toast(error.message, "error", "Carregar edital");
     return;
   }

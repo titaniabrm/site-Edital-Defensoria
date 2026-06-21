@@ -378,17 +378,17 @@ async function notifyDiscord(submission, baseUrl) {
   const id = submission.identity || {};
   await postWebhook({
     embeds: [{
-      author: { name: "📥 Nova inscricao recebida" },
+      author: { name: "ðŸ“¥ Nova inscriÃ§Ã£o recebida" },
       title: `@${id.discord || "candidato"}`,
       url: target,
-      description: "Um candidato enviou suas respostas e esta aguardando avaliacao da banca.",
+      description: "Um candidato enviou suas respostas e estÃ¡ aguardando avaliaÃ§Ã£o da banca.",
       color: 0x4a6f8a,
       fields: [
-        { name: "🎮 Roblox", value: id.roblox || "—", inline: true },
-        { name: "⏱ Tempo no EB", value: id.tempoEb || "—", inline: true },
-        { name: "🕐 Recebido", value: `<t:${Math.floor(new Date(submission.submittedAt).getTime() / 1000)}:R>`, inline: true }
+        { name: "ðŸŽ® Roblox", value: id.roblox || "â€”", inline: true },
+        { name: "â± Tempo no EB", value: id.tempoEb || "â€”", inline: true },
+        { name: "ðŸ• Recebido", value: `<t:${Math.floor(new Date(submission.submittedAt).getTime() / 1000)}:R>`, inline: true }
       ],
-      footer: { text: `${WEBHOOK_FOOTER} • clique no nome pra abrir no painel` },
+      footer: { text: `${WEBHOOK_FOOTER} â€¢ clique no nome pra abrir no painel` },
       timestamp: submission.submittedAt
     }]
   });
@@ -399,11 +399,11 @@ async function notifyDiscord(submission, baseUrl) {
 async function notifyStatusChange(identity, status, baseUrl, submissionId) {
   if (!DISCORD_WEBHOOK_URL || !identity) return;
   const config = {
-    Aprovado: { emoji: "✅", color: 0x287355, title: "Candidato aprovado", text: "Bem-vindo a Defensoria-Geral do Exercito!" },
-    Reprovado: { emoji: "❌", color: 0xb73d35, title: "Candidato reprovado", text: "Resultado divulgado ao candidato." },
-    "Em analise": { emoji: "🔎", color: 0xb97518, title: "Voltou para analise", text: "A banca reabriu a avaliacao deste candidato." }
+    Aprovado: { emoji: "âœ…", color: 0x287355, title: "Candidato aprovado", text: "Bem-vindo Ã  Defensoria-Geral do ExÃ©rcito!" },
+    Reprovado: { emoji: "âŒ", color: 0xb73d35, title: "Candidato reprovado", text: "Resultado divulgado ao candidato." },
+    "Em analise": { emoji: "ðŸ”Ž", color: 0xb97518, title: "Voltou para anÃ¡lise", text: "A banca reabriu a avaliaÃ§Ã£o deste candidato." }
   };
-  const cfg = config[status] || { emoji: "ℹ️", color: 0x65717b, title: "Status atualizado", text: "" };
+  const cfg = config[status] || { emoji: "â„¹ï¸", color: 0x65717b, title: "Status atualizado", text: "" };
   const url = submissionId && baseUrl ? `${baseUrl.replace(/\/$/, "")}/admin#submission/${submissionId}` : undefined;
   await postWebhook({
     embeds: [{
@@ -438,7 +438,7 @@ async function reportError(context, error) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username: "Defensoria-Geral do Exercito - Monitor",
-        content: `🚨 Erro no servidor: \`${key}\`\n> ${String(error?.message || error).slice(0, 1500)}`
+        content: `ðŸš¨ Erro no servidor: \`${key}\`\n> ${String(error?.message || error).slice(0, 1500)}`
       })
     }).catch(() => {});
   } catch {
@@ -1404,7 +1404,7 @@ function requireAdmin(req, res, next) {
 function requireSession(req, res, next) {
   const session = readSession(req);
   if (!session) {
-    res.status(401).json({ error: "Faca login com Discord para continuar." });
+    res.status(401).json({ error: "FaÃ§a login com Discord para continuar." });
     return;
   }
   req.session = session;
@@ -1438,7 +1438,7 @@ app.get("/api/exam", requireSession, async (req, res) => {
   const isAdmin = Boolean(req.session.isAdmin);
 
   if (isMaintenanceMode() && !isAdmin) {
-    res.status(503).json({ error: "O sistema esta em manutencao. Voltamos em breve." });
+    res.status(503).json({ error: "O sistema estÃ¡ em manutenÃ§Ã£o. Voltamos em breve." });
     return;
   }
 
@@ -1699,7 +1699,7 @@ async function withTimeout(promise, ms) {
 }
 
 app.get("/api/health", async (req, res) => {
-  const checks = { database: "local-json", databaseOk: true, groq: "nao configurado", groqOk: null };
+  const checks = { database: "local-json", databaseOk: true, groq: "nÃ£o configurado", groqOk: null };
 
   if (supabase) {
     checks.database = "supabase";
@@ -1800,7 +1800,7 @@ function verifyOAuthState(state) {
 // Mantemos o caminho /api/admin/discord/* (registrado no portal do Discord).
 app.get("/api/admin/discord/start", (req, res) => {
   if (!DISCORD_CLIENT_ID || !DISCORD_REDIRECT_URI || !DISCORD_CLIENT_SECRET) {
-    res.status(503).json({ error: "Login Discord nao configurado no servidor." });
+    res.status(503).json({ error: "Login Discord nÃ£o configurado no servidor." });
     return;
   }
   const returnTo = String(req.query?.return_to || "/").slice(0, 200);
@@ -1872,10 +1872,11 @@ app.get("/api/admin/discord/callback", async (req, res) => {
     }
 
     const isAdmin = inAllowlist && roleOk;
-    // Constroi URL do avatar Discord (formato CDN oficial). Se nao tiver
-    // avatar custom, usa o default baseado no discriminator/id.
+    // Usa o proxy /api/avatar (mesma origem) em vez de linkar direto pro CDN
+    // do Discord, pra imagem nao sofrer bloqueio de CSP/extensoes do cliente.
+    // Sem avatar custom, cai no default oficial baseado no id do usuario.
     const avatarUrl = user.avatar
-      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
+      ? `/api/avatar/${user.id}/${user.avatar}`
       : `https://cdn.discordapp.com/embed/avatars/${(BigInt(user.id) >> 22n) % 6n}.png`;
     const session = createSession({ discordId: user.id, username, isAdmin, avatarUrl });
     setSessionCookie(res, session);
@@ -1895,6 +1896,29 @@ app.get("/api/admin/discord/status", (req, res) => {
     allowedCount: getAllowedDiscord().length,
     roleCheck: Boolean(DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID)
   });
+});
+
+// Proxy do avatar do Discord: serve a imagem como first-party (mesma origem)
+// pra nao depender de bloqueadores/extensoes/CSP de terceiros no <img src>.
+// So aceita ids/hashes no formato esperado, evitando uso como proxy aberto.
+const DEFAULT_AVATAR_PATH = "/embed/avatars/0.png";
+app.get("/api/avatar/:discordId/:hash", async (req, res) => {
+  const { discordId, hash } = req.params;
+  if (!/^\d{1,25}$/.test(discordId) || !/^[a-zA-Z0-9_]{1,40}$/.test(hash)) {
+    res.redirect(`https://cdn.discordapp.com${DEFAULT_AVATAR_PATH}`);
+    return;
+  }
+  try {
+    const upstream = await fetch(`https://cdn.discordapp.com/avatars/${discordId}/${hash}.png?size=128`);
+    if (!upstream.ok) throw new Error(`Discord CDN HTTP ${upstream.status}`);
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader("Content-Type", upstream.headers.get("content-type") || "image/png");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(buffer);
+  } catch (error) {
+    logger.warn({ err: error.message }, "avatar.proxy.failed");
+    res.redirect(`https://cdn.discordapp.com${DEFAULT_AVATAR_PATH}`);
+  }
 });
 
 // Quem esta logado agora (candidato ou admin).
@@ -1919,7 +1943,7 @@ app.post("/api/admin/login", rateLimitLogin, (req, res) => {
   const b = Buffer.from(ADMIN_PIN);
   const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
   if (!ok) {
-    res.status(401).json({ error: "Senha administrativa invalida." });
+    res.status(401).json({ error: "Senha administrativa invÃ¡lida." });
     return;
   }
   setAdminCookie(res);
@@ -1972,19 +1996,19 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
   try {
     await ensureConfig();
     if (isMaintenanceMode() && !req.session.isAdmin) {
-      res.status(503).json({ error: "Sistema em manutencao. Tente novamente em alguns minutos." });
+      res.status(503).json({ error: "Sistema em manutenÃ§Ã£o. Tente novamente em alguns minutos." });
       return;
     }
     const captchaOk = await verifyHCaptcha(req.body?.captchaToken, clientIp(req));
     if (!captchaOk) {
-      res.status(400).json({ error: "Captcha invalido ou expirado. Recarregue a pagina e tente de novo." });
+      res.status(400).json({ error: "Captcha invÃ¡lido ou expirado. Recarregue a pÃ¡gina e tente de novo." });
       return;
     }
     const valid = validateSubmission(req.body, req.session);
     const duplicate = await findDuplicateSubmission(valid.identity);
     if (duplicate) {
       res.status(409).json({
-        error: "Ja existe um envio registrado com este Discord ou Roblox.",
+        error: "JÃ¡ existe um envio registrado com este Discord ou Roblox.",
         duplicateId: duplicate.id
       });
       return;
@@ -2101,7 +2125,7 @@ app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
     res.json(submissions);
   } catch (error) {
     logger.error({ err: error.message }, "admin.list.failed");
-    res.status(500).json({ error: "Erro ao listar envios. Verifique configuracao do banco." });
+    res.status(500).json({ error: "Erro ao listar envios. Verifique configuraÃ§Ã£o do banco." });
   }
 });
 
@@ -2109,7 +2133,7 @@ app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) =>
   try {
     const status = String(req.body?.status || "").trim();
     if (!["Aprovado", "Reprovado", "Em analise"].includes(status)) {
-      res.status(400).json({ error: "Status invalido." });
+      res.status(400).json({ error: "Status invÃ¡lido." });
       return;
     }
     const note = String(req.body?.note || "");
@@ -2179,7 +2203,7 @@ app.get("/api/admin/submissions/:id/report.pdf", requireAdmin, async (req, res) 
   try {
     const submission = await getSubmissionById(req.params.id);
     if (!submission) {
-      res.status(404).json({ error: "Candidato nao encontrado." });
+      res.status(404).json({ error: "Candidato nÃ£o encontrado." });
       return;
     }
 
@@ -2231,7 +2255,7 @@ app.get("/api/admin/active", requireAdmin, async (req, res) => {
 // Envia o ranking dos aprovados como embed bonito (top 3 destacados).
 app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
   if (!DISCORD_WEBHOOK_URL) {
-    res.status(400).json({ error: "DISCORD_WEBHOOK_URL nao configurado." });
+    res.status(400).json({ error: "DISCORD_WEBHOOK_URL não configurado." });
     return;
   }
   try {
@@ -2247,12 +2271,12 @@ app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
       if (gradeB !== gradeA) return gradeB - gradeA;
       return (b.performancePercent || 0) - (a.performancePercent || 0);
     });
-    const medal = (i) => i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `\`#${String(i + 1).padStart(2, " ")}\``;
+    const medal = (i) => i === 0 ? "ðŸ¥‡" : i === 1 ? "ðŸ¥ˆ" : i === 2 ? "ðŸ¥‰" : `\`#${String(i + 1).padStart(2, " ")}\``;
     const lines = approved.slice(0, 25).map((s, i) => {
       const detail = s.manualGrade != null
-        ? `📝 **${s.manualGrade.toFixed(1)}** • ✅ ${s.performancePercent}%`
-        : `✅ ${s.performancePercent}% objetivas`;
-      return `${medal(i)} **@${s.identity.discord || "?"}**\n┗ ${detail}`;
+        ? `ðŸ“ **${s.manualGrade.toFixed(1)}** â€¢ âœ… ${s.performancePercent}%`
+        : `âœ… ${s.performancePercent}% objetivas`;
+      return `${medal(i)} **@${s.identity.discord || "?"}**\nâ”— ${detail}`;
     });
     const extra = approved.length > 25 ? `\n\n*+${approved.length - 25} candidato(s) nao exibido(s)*` : "";
     const wh = await fetch(DISCORD_WEBHOOK_URL, {
@@ -2261,11 +2285,11 @@ app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
       body: JSON.stringify({
         username: WEBHOOK_USERNAME,
         embeds: [{
-          author: { name: "🏆 Ranking Oficial — Aprovados" },
+          author: { name: "ðŸ† Ranking Oficial â€” Aprovados" },
           title: `${approved.length} candidato(s) aprovado(s)`,
           description: lines.join("\n\n") + extra,
           color: 0xd7ad5d,
-          footer: { text: `${WEBHOOK_FOOTER} • ordenado por nota manual` },
+          footer: { text: `${WEBHOOK_FOOTER} â€¢ ordenado por nota manual` },
           timestamp: new Date().toISOString()
         }]
       })
@@ -2281,7 +2305,7 @@ app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
 // Estatisticas da semana (ultimos 7 dias) - resumo executivo bonito.
 app.post("/api/admin/stats/send", requireAdmin, async (req, res) => {
   if (!DISCORD_WEBHOOK_URL) {
-    res.status(400).json({ error: "DISCORD_WEBHOOK_URL nao configurado." });
+    res.status(400).json({ error: "DISCORD_WEBHOOK_URL não configurado." });
     return;
   }
   try {
@@ -2302,7 +2326,7 @@ app.post("/api/admin/stats/send", requireAdmin, async (req, res) => {
     const decided = totals.approved + totals.rejected;
     const approveRate = decided ? Math.round((totals.approved / decided) * 100) : 0;
     const filled = Math.round(approveRate / 10);
-    const bar = "█".repeat(filled) + "░".repeat(10 - filled);
+    const bar = "â–ˆ".repeat(filled) + "â–‘".repeat(10 - filled);
 
     const wh = await fetch(DISCORD_WEBHOOK_URL, {
       method: "POST",
@@ -2310,15 +2334,15 @@ app.post("/api/admin/stats/send", requireAdmin, async (req, res) => {
       body: JSON.stringify({
         username: WEBHOOK_USERNAME,
         embeds: [{
-          author: { name: "📊 Relatorio Semanal" },
-          title: "Resumo dos ultimos 7 dias",
+          author: { name: "ðŸ“Š Relatorio Semanal" },
+          title: "Resumo dos últimos 7 dias",
           description: `**${totals.weekTotal}** novos envios esta semana\n**${avgScore}%** de media nas objetivas\n\n**Taxa de aprovacao** (entre os decididos)\n\`${bar}\` ${approveRate}%`,
           color: 0x4f6a50,
           fields: [
-            { name: "✅ Aprovados", value: `**${totals.approved}**`, inline: true },
-            { name: "❌ Reprovados", value: `**${totals.rejected}**`, inline: true },
-            { name: "🔎 Em analise", value: `**${totals.pending}**`, inline: true },
-            { name: "📈 Total geral acumulado", value: `**${totals.total}** envios desde o inicio do edital`, inline: false }
+            { name: "âœ… Aprovados", value: `**${totals.approved}**`, inline: true },
+            { name: "âŒ Reprovados", value: `**${totals.rejected}**`, inline: true },
+            { name: "ðŸ”Ž Em analise", value: `**${totals.pending}**`, inline: true },
+            { name: "ðŸ“ˆ Total geral acumulado", value: `**${totals.total}** envios desde o inicio do edital`, inline: false }
           ],
           footer: { text: WEBHOOK_FOOTER },
           timestamp: new Date().toISOString()
@@ -2396,7 +2420,7 @@ app.get("/api/draft/:clientId", async (req, res) => {
 // Backup acionado por cron (Vercel Cron envia Authorization: Bearer CRON_SECRET).
 app.get("/api/cron/backup", async (req, res) => {
   if (!CRON_SECRET || extractBearer(req) !== CRON_SECRET) {
-    res.status(401).json({ error: "Nao autorizado." });
+    res.status(401).json({ error: "Não autorizado." });
     return;
   }
   try {
@@ -2448,7 +2472,7 @@ app.use((error, req, res, next) => {
 
 // Carrega configuracao mutavel (datas do edital etc).
 // Em serverless cada invocacao re-importa o modulo; refreshamos a cada 60s
-// para que mudancas feitas no painel apareçam em outras instancias.
+// para que mudancas feitas no painel apareÃ§am em outras instancias.
 const configBootPromise = loadRuntimeConfig().catch((e) => {
   logger.warn({ err: e.message }, "config.boot.failed");
 });

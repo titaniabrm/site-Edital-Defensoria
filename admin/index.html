@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Painel | Defensoria-Geral do Exercito</title>
+  <title>Painel | Defensoria-Geral do Exército</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
@@ -13,15 +13,14 @@
 <body class="admin-page">
   <header class="topbar">
     <div class="brand">
-      <img src="/assets/defensoria-logo.webp" alt="Emblema da Defensoria-Geral do Exercito" width="64" height="64">
+      <img src="/assets/defensoria-logo.webp" alt="Emblema da Defensoria-Geral do Exército" width="64" height="64">
       <div>
         <p class="eyebrow">Painel administrativo</p>
-        <h1>Defensoria-Geral do Exercito</h1>
+        <h1>Defensoria-Geral do Exército</h1>
       </div>
     </div>
     <nav class="top-actions" aria-label="Atalhos">
-      <span id="activeNow" class="active-now hidden" title="Candidatos preenchendo agora"></span>
-      <div id="userBadge" class="user-badge hidden" aria-label="Usuario logado">
+      <div id="userBadge" class="user-badge hidden" aria-label="Usuário logado">
         <img id="userAvatar" alt="" width="32" height="32">
         <span id="userName"></span>
       </div>
@@ -34,43 +33,43 @@
     <section id="revisao" class="review-shell" aria-labelledby="revisaoTitulo">
       <div class="section-heading">
         <p class="eyebrow">Painel administrativo</p>
-        <h2 id="revisaoTitulo">Defensoria-Geral do Exercito</h2>
+        <h2 id="revisaoTitulo">Defensoria-Geral do Exército</h2>
       </div>
 
       <div id="reviewLocked" class="empty-state">
-        Verificando sua sessao Discord...
+        Verificando sua sessão Discord...
       </div>
 
       <div id="reviewDashboard" class="review-dashboard hidden">
         <nav class="admin-tabs" id="adminTabs" aria-label="Categorias do painel">
-          <button class="admin-tab active" type="button" data-tab="overview">Visao geral</button>
+          <button class="admin-tab active" type="button" data-tab="overview">Visão geral</button>
           <button class="admin-tab" type="button" data-tab="candidates">Candidatos</button>
-          <button class="admin-tab" type="button" data-tab="config">Configuracoes</button>
+          <button class="admin-tab" type="button" data-tab="config">Configurações</button>
           <button class="admin-tab" type="button" data-tab="audit">Auditoria</button>
         </nav>
 
         <div class="admin-tab-panel" id="tab-overview">
           <div class="overview-actions">
             <button class="secondary-button" type="button" id="sendRankingButton">🏆 Enviar ranking pro Discord</button>
-            <button class="secondary-button" type="button" id="sendStatsButton">📊 Enviar estatisticas pro Discord</button>
+            <button class="secondary-button" type="button" id="sendStatsButton">📊 Enviar estatísticas pro Discord</button>
           </div>
           <div class="summary-grid" id="summaryGrid"></div>
           <div class="summary-card chart-card timeline-card">
-            <span>Envios por dia (todo o periodo)</span>
+            <span>Envios por dia (todo o período)</span>
             <div id="timelineChart"><div class="empty-state">Carregando...</div></div>
           </div>
           <div class="summary-card chart-card timeline-card">
-            <span>Comparativo entre questoes objetivas (% acertos)</span>
+            <span>Comparativo entre questões objetivas (% acertos)</span>
             <div id="questionStatsChart"><div class="empty-state">Carregando...</div></div>
           </div>
         </div>
 
         <div class="admin-tab-panel hidden" id="tab-config">
           <div class="config-panel-block">
-            <h3>Configuracoes do edital</h3>
+            <h3>Configurações do edital</h3>
             <form id="configForm" class="config-form">
               <label>
-                <span>Inicio do edital</span>
+                <span>Início do edital</span>
                 <input type="datetime-local" name="examStartAt" required>
               </label>
               <label>
@@ -78,28 +77,28 @@
                 <input type="datetime-local" name="examEndAt" required>
               </label>
               <label>
-                <span>Nota minima (%)</span>
+                <span>Nota mínima (%)</span>
                 <input type="number" name="minPerformancePercent" min="0" max="100" step="1" required>
               </label>
               <label>
-                <span>Duracao minima do form (segundos)</span>
+                <span>Duração mínima do form (segundos)</span>
                 <input type="number" name="minFormDurationSec" min="0" max="3600" step="1" required>
               </label>
               <label>
-                <span>Maximo de aprovados (0 = sem limite)</span>
+                <span>Máximo de aprovados (0 = sem limite)</span>
                 <input type="number" name="maxApproved" min="0" max="100000" step="1" required>
               </label>
               <label class="full">
-                <span>Usuarios Discord autorizados (separados por virgula)</span>
+                <span>Usuários Discord autorizados (separados por vírgula)</span>
                 <input type="text" name="discordAllowedUsers" placeholder="mudinhoxy, titaniabrjv, yoursalf_.7">
               </label>
               <label class="full maintenance-toggle">
                 <input type="checkbox" name="maintenance">
-                <span>Modo manutencao (bloqueia novos envios e a prova; admins continuam vendo)</span>
+                <span>Modo manutenção (bloqueia novos envios e a prova; admins continuam vendo)</span>
               </label>
               <div class="config-status" id="configStatus"></div>
               <div class="config-actions">
-                <button type="submit" class="primary-button">Salvar configuracoes</button>
+                <button type="submit" class="primary-button">Salvar configurações</button>
                 <button type="button" id="reloadConfigButton" class="secondary-button">Recarregar</button>
               </div>
             </form>
@@ -107,18 +106,18 @@
 
           <div class="config-panel-block">
             <h3>Tema personalizado</h3>
-            <p class="muted-hint">Customize a aparencia do edital. Deixe em branco pra usar o padrao.</p>
+            <p class="muted-hint">Customize a aparência do edital. Deixe em branco pra usar o padrão.</p>
             <form id="themeForm" class="config-form">
               <label class="full">
-                <span>Titulo do banner principal</span>
+                <span>Título do banner principal</span>
                 <input type="text" name="bannerTitle" placeholder="Ex.: Processo seletivo 2026">
               </label>
               <label class="full">
-                <span>Subtitulo do banner</span>
-                <input type="text" name="bannerSubtitle" placeholder="Ex.: Inscricoes abertas ate dia X">
+                <span>Subtítulo do banner</span>
+                <input type="text" name="bannerSubtitle" placeholder="Ex.: Inscrições abertas até dia X">
               </label>
               <label>
-                <span>Cor primaria (hex)</span>
+                <span>Cor primária (hex)</span>
                 <input type="text" name="primaryColor" placeholder="#071a2b">
               </label>
               <label>
@@ -143,6 +142,13 @@
         </div>
 
         <div class="admin-tab-panel hidden" id="tab-candidates">
+          <div id="activeNowCard" class="active-now-card hidden">
+            <span class="active-now-dot"></span>
+            <div>
+              <strong id="activeNowCount">0</strong>
+              <span>candidato(s) preenchendo a prova agora</span>
+            </div>
+          </div>
           <div class="dashboard-layout">
             <div class="submission-list">
               <div class="panel-title">
@@ -165,7 +171,7 @@
                   <select id="riskFilter">
                     <option value="all">Todos</option>
                     <option value="high">Maior risco de IA</option>
-                    <option value="review">Em analise</option>
+                    <option value="review">Em análise</option>
                     <option value="approved">Aprovados</option>
                     <option value="rejected">Reprovados</option>
                   </select>
@@ -184,13 +190,13 @@
                 <span id="bulkCount">0 selecionados</span>
                 <button class="primary-button" type="button" data-bulk="Aprovado">Aprovar selecionados</button>
                 <button class="danger-button" type="button" data-bulk="Reprovado">Reprovar selecionados</button>
-                <button class="secondary-button" type="button" data-bulk="Em analise">Voltar para analise</button>
-                <button class="ghost-button" type="button" id="bulkClear">Limpar selecao</button>
+                <button class="secondary-button" type="button" data-bulk="Em analise">Voltar para análise</button>
+                <button class="ghost-button" type="button" id="bulkClear">Limpar seleção</button>
               </div>
               <div id="submissionList"></div>
             </div>
             <article class="submission-detail" id="submissionDetail">
-              <div class="empty-state">Selecione um candidato para ver a analise.</div>
+              <div class="empty-state">Selecione um candidato para ver a análise.</div>
             </article>
           </div>
         </div>
@@ -207,17 +213,30 @@
   </main>
 
   <footer>
-    <span>Defensoria-Geral do Exercito</span>
+    <span>Defensoria-Geral do Exército</span>
     <span>Painel administrativo</span>
     <span class="credits">Desenvolvido por <a href="https://portf-lio-dev-bots.vercel.app" target="_blank" rel="noopener">DevBots</a></span>
   </footer>
 
   <div id="compareModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-body modal-wide">
-      <p class="eyebrow">Comparacao de respostas</p>
+      <p class="eyebrow">Comparação de respostas</p>
       <div id="compareBody"></div>
       <div class="modal-actions">
         <button class="secondary-button" type="button" id="closeCompare">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dialogModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="dialogModalTitle">
+    <div class="modal-body">
+      <p class="eyebrow" id="dialogModalEyebrow">Atenção</p>
+      <h2 id="dialogModalTitle">Confirmar</h2>
+      <p id="dialogModalMessage"></p>
+      <input type="text" id="dialogModalInput" class="hidden" autocomplete="off">
+      <div class="modal-actions">
+        <button type="button" class="ghost-button" id="dialogModalCancel">Cancelar</button>
+        <button type="button" class="primary-button" id="dialogModalConfirm">Confirmar</button>
       </div>
     </div>
   </div>

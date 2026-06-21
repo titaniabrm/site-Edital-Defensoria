@@ -54,6 +54,78 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+// ---- Dialogo customizado (substitui confirm()/prompt() nativos) ----
+const dialogModal = document.querySelector("#dialogModal");
+const dialogModalEyebrow = document.querySelector("#dialogModalEyebrow");
+const dialogModalTitle = document.querySelector("#dialogModalTitle");
+const dialogModalMessage = document.querySelector("#dialogModalMessage");
+const dialogModalInput = document.querySelector("#dialogModalInput");
+const dialogModalCancel = document.querySelector("#dialogModalCancel");
+const dialogModalConfirm = document.querySelector("#dialogModalConfirm");
+let dialogResolve = null;
+
+function closeDialog(result) {
+  dialogModal?.classList.add("hidden");
+  if (dialogResolve) {
+    const resolve = dialogResolve;
+    dialogResolve = null;
+    resolve(result);
+  }
+}
+
+function openDialog({
+  eyebrow = "Atencao",
+  title = "Confirmar",
+  message = "",
+  danger = false,
+  withInput = false,
+  inputValue = "",
+  inputPlaceholder = "",
+  confirmLabel = "Confirmar",
+  cancelLabel = "Cancelar",
+  hideCancel = false
+}) {
+  if (!dialogModal) return Promise.resolve(withInput ? null : false);
+  dialogModalEyebrow.textContent = eyebrow;
+  dialogModalTitle.textContent = title;
+  dialogModalMessage.textContent = message;
+  dialogModalConfirm.textContent = confirmLabel;
+  dialogModalConfirm.className = danger ? "danger-button" : "primary-button";
+  dialogModalCancel.textContent = cancelLabel;
+  dialogModalCancel.classList.toggle("hidden", hideCancel);
+  if (withInput) {
+    dialogModalInput.classList.remove("hidden");
+    dialogModalInput.value = inputValue;
+    dialogModalInput.placeholder = inputPlaceholder;
+  } else {
+    dialogModalInput.classList.add("hidden");
+  }
+  dialogModal.classList.remove("hidden");
+  if (withInput) setTimeout(() => dialogModalInput.focus(), 50);
+  return new Promise((resolve) => { dialogResolve = resolve; });
+}
+
+function customConfirm(message, opts = {}) {
+  return openDialog({ message, ...opts }).then((result) => result === true);
+}
+
+function customPrompt(message, opts = {}) {
+  return openDialog({ message, withInput: true, ...opts });
+}
+
+function customAlert(message, opts = {}) {
+  return openDialog({ message, hideCancel: true, confirmLabel: "OK", ...opts });
+}
+
+dialogModalCancel?.addEventListener("click", () => closeDialog(dialogModalInput.classList.contains("hidden") ? false : null));
+dialogModalConfirm?.addEventListener("click", () => closeDialog(dialogModalInput.classList.contains("hidden") ? true : dialogModalInput.value));
+dialogModal?.addEventListener("click", (event) => {
+  if (event.target === dialogModal) closeDialog(dialogModalInput.classList.contains("hidden") ? false : null);
+});
+dialogModalInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") dialogModalConfirm.click();
+});
+
 function normalizeText(value) {
   return String(value ?? "")
     .toLowerCase()
@@ -98,7 +170,7 @@ function riskLabel(score) {
 function statusLabel(status) {
   if (status === "Aprovado") return { text: "Aprovado", className: "good" };
   if (status === "Reprovado") return { text: "Reprovado", className: "bad" };
-  return { text: "Em analise", className: "warn" };
+  return { text: "Em análise", className: "warn" };
 }
 
 function renderSummary(submissions) {
@@ -124,18 +196,18 @@ function renderSummary(submissions) {
 
   summaryGrid.innerHTML = `
     <div class="summary-card"><strong>${total}</strong><span>envios registrados</span></div>
-    <div class="summary-card"><strong>${avgScore}%</strong><span>media nas objetivas</span></div>
-    <div class="summary-card"><strong>${avgRisk}%</strong><span>media de risco IA</span></div>
+    <div class="summary-card"><strong>${avgScore}%</strong><span>média nas objetivas</span></div>
+    <div class="summary-card"><strong>${avgRisk}%</strong><span>média de risco IA</span></div>
     <div class="summary-card"><strong>${highRisk}</strong><span>candidatos com alerta alto</span></div>
     <div class="summary-card"><strong>${approved}</strong><span>aprovados</span></div>
-    <div class="summary-card"><strong>${review}</strong><span>em analise</span></div>
+    <div class="summary-card"><strong>${review}</strong><span>em análise</span></div>
     <div class="summary-card"><strong>${rejected}</strong><span>reprovados</span></div>
     <div class="summary-card chart-card">
-      <span>distribuicao de % objetivas</span>
+      <span>distribuição de % objetivas</span>
       ${renderBarChart(scoreBuckets, ["0-20", "20-40", "40-60", "60-80", "80-100"])}
     </div>
     <div class="summary-card chart-card">
-      <span>distribuicao de risco IA</span>
+      <span>distribuição de risco IA</span>
       ${renderBarChart(riskBuckets, ["0-20", "20-40", "40-60", "60-80", "80-100"])}
     </div>
     <div class="summary-card chart-card">
@@ -194,7 +266,7 @@ function renderSubmissionList(submissions) {
     const gradePill = submission.manualGrade != null ? `<span class="pill good">Nota ${submission.manualGrade}</span>` : "";
     return `
       <div class="submission-card-wrap">
-        <label class="submission-check" title="Selecionar para acoes em lote">
+        <label class="submission-check" title="Selecionar para ações em lote">
           <input type="checkbox" data-bulk-select="${submission.id}" ${selected ? "checked" : ""}>
         </label>
         <button class="submission-card ${submission.id === selectedSubmissionId ? "active" : ""}" type="button" data-submission-id="${submission.id}" style="--card-progress:${percentage}%">
@@ -332,16 +404,16 @@ function renderSubmissionDetail(submission) {
     <div class="status-actions">
       <button class="primary-button" type="button" data-set-status="Aprovado" data-id="${submission.id}">Aprovar</button>
       <button class="danger-button" type="button" data-set-status="Reprovado" data-id="${submission.id}">Reprovar</button>
-      <button class="secondary-button" type="button" data-set-status="Em analise" data-id="${submission.id}">Em analise</button>
+      <button class="secondary-button" type="button" data-set-status="Em analise" data-id="${submission.id}">Em análise</button>
     </div>
     <div class="detail-grid">
       <div class="detail-box"><span>Tempo no EB</span><strong>${escapeHtml(submission.identity.tempoEb)}</strong></div>
       <div class="detail-box"><span>Envio</span><strong>${formatDate(submission.submittedAt)}</strong></div>
       <div class="detail-box"><span>Objetivas</span><strong>${submission.objectiveScore}/${submission.objectiveTotal}</strong></div>
       <div class="detail-box"><span>Desempenho</span><strong>${performance}%</strong></div>
-      <div class="detail-box"><span>Triagem IA</span><strong>${risk.text} - ${submission.aiRiskAverage}% medio</strong></div>
-      <div class="detail-box"><span>Analise</span><strong>${escapeHtml(submission.aiProvider || "groq")}</strong></div>
-      <div class="detail-box"><span>Similaridade maxima</span><strong>${similarity.maxRatio || 0}%</strong></div>
+      <div class="detail-box"><span>Triagem IA</span><strong>${risk.text} - ${submission.aiRiskAverage}% médio</strong></div>
+      <div class="detail-box"><span>Análise</span><strong>${escapeHtml(submission.aiProvider || "groq")}</strong></div>
+      <div class="detail-box"><span>Similaridade máxima</span><strong>${similarity.maxRatio || 0}%</strong></div>
       <div class="detail-box"><span>Subjetivas com cola</span><strong>${similarity.flagged || 0}</strong></div>
       <div class="detail-box"><span>UA hash</span><strong>${escapeHtml((submission.uaHash || "-").slice(0, 12))}</strong></div>
       <div class="detail-box"><span>IP hash</span><strong>${escapeHtml((submission.ipHash || "-").slice(0, 12))}</strong></div>
@@ -350,10 +422,10 @@ function renderSubmissionDetail(submission) {
         <strong>${escapeHtml(submission.fingerprint || "-")}</strong>
         ${submission.fingerprintMatches?.length ? `<span class="alert-text">⚠ Mesmo dispositivo de ${submission.fingerprintMatches.length} outro(s): ${submission.fingerprintMatches.map((m) => "@" + escapeHtml(m)).join(", ")}</span>` : ""}
       </div>
-      <div class="detail-box ${submission.devtoolsOpened ? "alert" : ""}"><span>DevTools</span><strong>${submission.devtoolsOpened ? "ABERTO" : "nao"}</strong></div>
-      <div class="detail-box"><span>Voltas na revisao</span><strong>${submission.reviewCount || 0}</strong></div>
+      <div class="detail-box ${submission.devtoolsOpened ? "alert" : ""}"><span>DevTools</span><strong>${submission.devtoolsOpened ? "ABERTO" : "não"}</strong></div>
+      <div class="detail-box"><span>Voltas na revisão</span><strong>${submission.reviewCount || 0}</strong></div>
       <div class="detail-box"><span>Maior inatividade</span><strong>${Math.round((submission.maxIdleMs || 0) / 1000)}s</strong></div>
-      ${submission.autoSuggestedStatus ? `<div class="detail-box"><span>Sugestao automatica</span><strong>${escapeHtml(submission.autoSuggestedStatus)}</strong></div>` : ""}
+      ${submission.autoSuggestedStatus ? `<div class="detail-box"><span>Sugestão automática</span><strong>${escapeHtml(submission.autoSuggestedStatus)}</strong></div>` : ""}
     </div>
     ${renderTimePerQuestionChart(submission)}
     ${similarityRows ? `<div class="answer-review"><span>Subjetivas mais parecidas com outro candidato</span><ul class="flag-list">${similarityRows}</ul></div>` : ""}
@@ -470,20 +542,21 @@ let activePollTimer = null;
 let sessionRefreshTimer = null;
 
 async function refreshActiveNow() {
-  const el = document.querySelector("#activeNow");
-  if (!el) return;
+  const card = document.querySelector("#activeNowCard");
+  const count = document.querySelector("#activeNowCount");
+  if (!card || !count) return;
   try {
     const res = await api("/api/admin/active");
     if (!res.ok) return;
     const data = await res.json();
     if (data.active > 0) {
-      el.classList.remove("hidden");
-      el.textContent = `🟢 ${data.active} preenchendo agora`;
+      card.classList.remove("hidden");
+      count.textContent = String(data.active);
     } else {
-      el.classList.add("hidden");
+      card.classList.add("hidden");
     }
   } catch {
-    el.classList.add("hidden");
+    card.classList.add("hidden");
   }
 }
 
@@ -605,7 +678,11 @@ function renderTimePerQuestionChart(submission) {
 // ---- Acoes em lote: aprovar/reprovar varios candidatos de uma vez. ----
 async function bulkUpdateStatus(status) {
   if (!bulkSelection.size) return;
-  if (!confirm(`Aplicar status "${status}" a ${bulkSelection.size} candidato(s)?`)) return;
+  const ok1 = await customConfirm(`Aplicar status "${status}" a ${bulkSelection.size} candidato(s)?`, {
+    eyebrow: "Acao em lote",
+    title: "Confirmar alteracao"
+  });
+  if (!ok1) return;
   const ids = [...bulkSelection];
   let ok = 0;
   let fail = 0;
@@ -632,7 +709,11 @@ async function bulkUpdateStatus(status) {
 }
 
 async function sendRanking() {
-  if (!confirm("Enviar o ranking atual dos aprovados para o canal do Discord?")) return;
+  const ok = await customConfirm("Enviar o ranking atual dos aprovados para o canal do Discord?", {
+    eyebrow: "Discord",
+    title: "Enviar ranking"
+  });
+  if (!ok) return;
   try {
     const res = await api("/api/admin/ranking/send", { method: "POST" });
     const data = await res.json().catch(() => ({}));
@@ -644,12 +725,16 @@ async function sendRanking() {
 }
 
 async function sendStats() {
-  if (!confirm("Enviar as estatisticas da semana para o canal do Discord?")) return;
+  const ok = await customConfirm("Enviar as estatísticas da semana para o canal do Discord?", {
+    eyebrow: "Discord",
+    title: "Enviar estatísticas"
+  });
+  if (!ok) return;
   try {
     const res = await api("/api/admin/stats/send", { method: "POST" });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Falha ao enviar estatisticas.");
-    toast(`Estatisticas enviadas (${data.weekTotal} envios na semana).`, "success", "Discord");
+    if (!res.ok) throw new Error(data.error || "Falha ao enviar estatísticas.");
+    toast(`Estatísticas enviadas (${data.weekTotal} envios na semana).`, "success", "Discord");
   } catch (error) {
     toast(error.message, "error");
   }
@@ -672,7 +757,7 @@ function previewTheme() {
   if (logo) {
     document.querySelectorAll(".brand img").forEach((img) => { img.src = logo; });
   }
-  toast("Visualizacao aplicada (nao salvo). Clique em Salvar tema pra persistir.", "info", "Preview");
+  toast("Visualização aplicada (não salva). Clique em Salvar tema pra persistir.", "info", "Preview");
 }
 
 async function saveTheme(event) {
@@ -690,14 +775,18 @@ async function saveTheme(event) {
     const res = await api("/api/admin/config", { method: "PATCH", body: JSON.stringify({ theme }) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Falha ao salvar tema.");
-    toast("Tema salvo. Os candidatos verao no proximo carregamento.", "success");
+    toast("Tema salvo. Os candidatos verão no próximo carregamento.", "success");
   } catch (error) {
     toast(error.message, "error");
   }
 }
 
 async function resetTheme() {
-  if (!confirm("Voltar ao tema padrao?")) return;
+  const ok = await customConfirm("Voltar ao tema padrão?", {
+    eyebrow: "Tema",
+    title: "Resetar tema"
+  });
+  if (!ok) return;
   try {
     const res = await api("/api/admin/config", {
       method: "PATCH",
@@ -705,7 +794,7 @@ async function resetTheme() {
     });
     if (!res.ok) throw new Error("Falha ao resetar tema.");
     document.querySelectorAll("#themeForm input").forEach((i) => { i.value = ""; });
-    toast("Tema padrao restaurado.", "success");
+    toast("Tema padrão restaurado.", "success");
   } catch (error) {
     toast(error.message, "error");
   }
@@ -738,7 +827,12 @@ async function handleSubmissionDetailClick(event) {
   if (setStatus) {
     const id = setStatus.dataset.id;
     const status = setStatus.dataset.setStatus;
-    const note = prompt(`Observacao para "${status}" (opcional):`) || "";
+    const note = (await customPrompt(`Observacao para "${status}" (opcional):`, {
+      eyebrow: "Decisao",
+      title: "Atualizar status",
+      inputPlaceholder: "Ex.: aprovado por unanimidade",
+      confirmLabel: "Confirmar"
+    })) || "";
     try {
       const response = await api(`/api/admin/submissions/${id}/status`, {
         method: "PATCH",
@@ -789,7 +883,7 @@ async function handleSubmissionDetailClick(event) {
         target.adminNote = adminNote;
         target.tags = tags;
       }
-      toast("Observacao salva.", "success");
+      toast("Observação salva.", "success");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -809,7 +903,7 @@ async function handleSubmissionDetailClick(event) {
       const target = loadedSubmissions.find((item) => item.id === id);
       if (target) target.reviewer = data.reviewer;
       renderReview();
-      toast("Revisor atribuido.", "success");
+      toast("Revisor atribuído.", "success");
     } catch (error) {
       toast(error.message, "error");
     }
@@ -844,9 +938,15 @@ async function handleSubmissionDetailClick(event) {
     const url = `${window.location.origin}/admin#submission/${copyBtn.dataset.copyLink}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast("Link copiado para a area de transferencia.", "success");
+      toast("Link copiado para a área de transferência.", "success");
     } catch {
-      prompt("Copie o link manualmente:", url);
+      await customPrompt("Copie o link manualmente:", {
+        eyebrow: "Link da ficha",
+        title: "Copiar link",
+        inputValue: url,
+        confirmLabel: "Fechar",
+        hideCancel: true
+      });
     }
     return;
   }
@@ -860,7 +960,7 @@ function openCompareModal(selfId, otherId, qid) {
   const self = loadedSubmissions.find((item) => item.id === selfId);
   const other = loadedSubmissions.find((item) => item.id === otherId);
   if (!self || !other) {
-    toast("Candidato pareado nao esta carregado.", "error");
+    toast("Candidato pareado não está carregado.", "error");
     return;
   }
   const selfAns = self.subjectiveAnswers.find((a) => Number(a.id) === qid);
@@ -948,12 +1048,12 @@ async function checkSessionAndBoot() {
       await loadConfig();
       toast(`Bem-vindo, @${data.username}.`, "success", "Painel liberado");
     } else if (data.authenticated && !data.isAdmin) {
-      reviewLocked.innerHTML = `Voce esta logado como <strong>@${escapeHtml(data.username)}</strong>, mas essa conta nao tem permissao de administrador. <a href="/">Voltar ao edital</a>`;
+      reviewLocked.innerHTML = `Você está logado como <strong>@${escapeHtml(data.username)}</strong>, mas essa conta não tem permissão de administrador. <a href="/">Voltar ao edital</a>`;
     } else {
-      reviewLocked.innerHTML = 'Voce nao esta logado. <a href="/">Entre com Discord pelo edital</a> para acessar o painel.';
+      reviewLocked.innerHTML = 'Você não está logado. <a href="/">Entre com Discord pelo edital</a> para acessar o painel.';
     }
   } catch (error) {
-    toast(error.message || "Falha ao verificar sessao.", "error");
+    toast(error.message || "Falha ao verificar sessão.", "error");
   }
 }
 
@@ -1020,7 +1120,7 @@ async function saveConfig(event) {
     const res = await api("/api/admin/config", { method: "PATCH", body: JSON.stringify(payload) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Falha ao salvar.");
-    toast("Configuracoes salvas.", "success");
+    toast("Configurações salvas.", "success");
     await loadConfig();
   } catch (error) {
     if (status) status.textContent = error.message;
@@ -1044,11 +1144,11 @@ function auditActionLabel(action) {
     "discord.login": "Login Discord",
     "discord.login.admin": "Login Discord (admin)",
     "discord.login.denied": "Login Discord negado",
-    "config.update": "Configuracao alterada",
+    "config.update": "Configuração alterada",
     "submission.status": "Status de candidato alterado",
-    "submission.reviewer": "Revisor atribuido",
+    "submission.reviewer": "Revisor atribuído",
     "submissions.clear": "Envios apagados",
-    "backup.run": "Backup automatico executado"
+    "backup.run": "Backup automático executado"
   };
   return labels[action] || action;
 }
@@ -1062,7 +1162,7 @@ async function loadAuditLog() {
     if (!response.ok) throw new Error("Falha ao carregar auditoria.");
     const entries = await response.json();
     if (!entries.length) {
-      list.innerHTML = `<div class="empty-state">Nenhuma acao registrada ainda.</div>`;
+      list.innerHTML = `<div class="empty-state">Nenhuma ação registrada ainda.</div>`;
       return;
     }
     list.innerHTML = entries.map((entry) => `
@@ -1091,13 +1191,18 @@ function bindEvents() {
   document.querySelector("#configForm")?.addEventListener("submit", saveConfig);
   document.querySelector("#reloadConfigButton")?.addEventListener("click", loadConfig);
   document.querySelector("#clearSubmissionsButton")?.addEventListener("click", async () => {
-    const sure = confirm(
-      "ATENCAO: isso vai apagar TODOS os envios salvos e resetar o edital - " +
-      "todos os candidatos poderao enviar de novo. Essa acao NAO PODE SER DESFEITA.\n\n" +
-      "Deseja continuar?"
+    const sure = await customConfirm(
+      "Isso vai apagar TODOS os envios salvos e resetar o edital — todos os candidatos poderão enviar de novo. Essa ação NÃO PODE SER DESFEITA.",
+      { eyebrow: "Atencao", title: "Limpar todos os envios", confirmLabel: "Continuar", danger: true }
     );
     if (!sure) return;
-    const typed = prompt('Para confirmar, digite "APAGAR" (em letras maiusculas):');
+    const typed = await customPrompt('Para confirmar, digite "APAGAR" (em letras maiusculas):', {
+      eyebrow: "Confirmacao final",
+      title: "Limpar todos os envios",
+      inputPlaceholder: "APAGAR",
+      confirmLabel: "Apagar definitivamente",
+      danger: true
+    });
     if (typed !== "APAGAR") {
       toast("Limpeza cancelada.", "info");
       return;

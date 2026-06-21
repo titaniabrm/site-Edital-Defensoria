@@ -994,6 +994,18 @@ footer {
   box-shadow: var(--shadow);
 }
 
+#dialogModalMessage {
+  margin: 10px 0 6px;
+  color: var(--ink);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+#dialogModalInput {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
 .modal-summary {
   display: grid;
   gap: 6px;
@@ -1253,11 +1265,44 @@ footer {
   flex-wrap: wrap;
 }
 
-.active-now {
-  font-size: 0.82rem;
-  font-weight: 600;
+.active-now-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 20px;
+  border-radius: 12px;
+  background: rgba(44, 122, 75, 0.1);
+  border: 1px solid rgba(44, 122, 75, 0.3);
+}
+
+.active-now-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #2c7a4b;
+  box-shadow: 0 0 0 0 rgba(44, 122, 75, 0.6);
+  animation: active-now-pulse 1.8s infinite;
+  flex-shrink: 0;
+}
+
+.active-now-card strong {
+  font-size: 1.6rem;
+  font-weight: 800;
   color: #2c7a4b;
-  margin-right: 8px;
+  margin-right: 6px;
+}
+
+.active-now-card span {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@keyframes active-now-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(44, 122, 75, 0.6); }
+  70% { box-shadow: 0 0 0 10px rgba(44, 122, 75, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(44, 122, 75, 0); }
 }
 
 .link-button {
