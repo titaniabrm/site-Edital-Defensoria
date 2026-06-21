@@ -74,7 +74,7 @@ function closeDialog(result) {
 }
 
 function openDialog({
-  eyebrow = "Atencao",
+  eyebrow = "Atenção",
   title = "Confirmar",
   message = "",
   danger = false,
@@ -1027,8 +1027,12 @@ function renderUserBadge(data) {
   const name = document.querySelector("#userName");
   if (avatar) {
     const fallback = "https://cdn.discordapp.com/embed/avatars/0.png";
+    avatar.onerror = () => {
+      // guarda contra loop: so troca pro fallback uma vez.
+      avatar.onerror = null;
+      avatar.src = fallback;
+    };
     avatar.src = data.avatarUrl || fallback;
-    avatar.onerror = () => { avatar.src = fallback; };
   }
   if (name) name.textContent = `@${data.username || ""}`;
   badge.classList.remove("hidden");

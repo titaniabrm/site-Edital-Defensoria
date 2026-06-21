@@ -123,8 +123,12 @@ function applySessionUI() {
         // Fallback se a sessao (antiga) nao trouxer avatarUrl ou se a imagem
         // do Discord falhar - usa um dos 6 avatares default da plataforma.
         const fallback = "https://cdn.discordapp.com/embed/avatars/0.png";
+        userAvatar.onerror = () => {
+          // guarda contra loop: so troca pro fallback uma vez.
+          userAvatar.onerror = null;
+          userAvatar.src = fallback;
+        };
         userAvatar.src = currentSession.avatarUrl || fallback;
-        userAvatar.onerror = () => { userAvatar.src = fallback; };
       }
       if (userName) userName.textContent = `@${currentSession.username || ""}`;
     }
@@ -272,7 +276,7 @@ function closeDialog(result) {
 }
 
 function openDialog({
-  eyebrow = "Atencao",
+  eyebrow = "Atenção",
   title = "Confirmar",
   message = "",
   danger = false,
