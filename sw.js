@@ -1,6 +1,8 @@
-// v2: muda o nome do cache para forcar a limpeza do cache antigo (dge-v1)
-// que ficava servindo app.js/index.html desatualizados para sempre.
-const CACHE = "dge-v2";
+// v3: novo nome de cache forca a limpeza de versoes antigas (dge-v1/v2) que
+// podiam servir app.js/index.html desatualizados - isso fazia o site so
+// funcionar direito em aba anonima (sem cache). Combinado com network-first
+// abaixo, todo carregamento busca a versao nova do servidor primeiro.
+const CACHE = "dge-v3";
 const STATIC = ["/", "/index.html", "/styles.css", "/app.js", "/manifest.json", "/assets/defensoria-logo.webp"];
 
 self.addEventListener("install", (event) => {

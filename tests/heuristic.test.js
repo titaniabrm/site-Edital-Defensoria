@@ -98,15 +98,26 @@ describe("withinExamWindow", () => {
 });
 
 describe("buildExamForSession", () => {
-  it("returns 15 objectives with shuffled options containing originalIndex", () => {
+  it("returns 10 objectives with shuffled options containing originalIndex", () => {
     const exam = buildExamForSession("seed-test");
-    expect(exam.objectives).toHaveLength(15);
+    expect(exam.objectives).toHaveLength(10);
     exam.objectives.forEach((q) => {
       expect(q.options).toHaveLength(4);
       q.options.forEach((option) => {
         expect(option).toHaveProperty("originalIndex");
         expect(option).toHaveProperty("text");
       });
+    });
+  });
+
+  it("returns 20 subjectives without leaking the model answer to the candidate", () => {
+    const exam = buildExamForSession("seed-test");
+    expect(exam.subjectives).toHaveLength(20);
+    exam.subjectives.forEach((q) => {
+      expect(q).toHaveProperty("id");
+      expect(q).toHaveProperty("text");
+      // gabarito (modelAnswer) nunca pode ir para o candidato
+      expect(q.modelAnswer).toBeUndefined();
     });
   });
 });

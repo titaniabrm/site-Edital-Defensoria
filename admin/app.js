@@ -359,6 +359,9 @@ function renderSubmissionDetail(submission) {
     const timeUsed = Number.isFinite(answer.timeSpentMs)
       ? `<span class="pill">${Math.round(answer.timeSpentMs / 1000)}s gastos</span>`
       : "";
+    const modelAnswer = answer.modelAnswer
+      ? `<details class="model-answer"><summary>📋 Gabarito sugerido</summary><p>${escapeHtml(answer.modelAnswer)}</p></details>`
+      : "";
     return `
       <div class="answer-review">
         <span>Questao ${answer.id} - ${answer.aiReview.wordCount} palavras - variedade ${answer.aiReview.uniqueRatio}%</span>
@@ -370,6 +373,7 @@ function renderSubmissionDetail(submission) {
           ${timeUsed}
           ${pasteFlag}
         </div>
+        ${modelAnswer}
         ${flags}
       </div>
     `;
@@ -1115,17 +1119,29 @@ async function saveConfig(event) {
     minFormDurationMs: Number(form.elements.minFormDurationSec.value) * 1000,
     maxApproved: form.elements.maxApproved ? Number(form.elements.maxApproved.value) : 0,
     maintenance: form.elements.maintenance ? Boolean(form.elements.maintenance.checked) : false,
-    discordAllowedUsers: form.elements.discordAllowedUsers.value
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
+    // Normaliza os @username do Discord: remove "@", espacos e o link do perfil
+    // se alguem colar, deixa minusculo (igual ao login) e tira duplicados.
+    discordAllowedUsers: [...new Set(
+      form.elements.discordAllowedUsers.value
+        .split(",")
+        .map((s) => s.trim().replace(/^@/, "").replace(/^https?:\/\/discord\.com\/users\//i, "").toLowerCase())
+        .filter(Boolean)
+    )]
   };
   try {
     const res = await api("/api/admin/config", { method: "PATCH", body: JSON.stringify(payload) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Falha ao salvar.");
-    toast("Configurações salvas.", "success");
+    toast(`Configurações salvas. ${payload.discordAllowedUsers.length} admin(s) autorizado(s).`, "success");
     await loadConfig();
+    // Reavalia a propria sessao: se o admin se removeu da lista, avisa na hora.
+    try {
+      const sres = await fetch("/api/session", { credentials: "same-origin" });
+      const sdata = await sres.json().catch(() => ({}));
+      if (sdata.authenticated && !sdata.isAdmin) {
+        toast("Atencao: voce nao esta mais na lista de admins. Vai perder o acesso ao recarregar.", "warn", "Cuidado");
+      }
+    } catch {}
   } catch (error) {
     if (status) status.textContent = error.message;
     toast(error.message, "error");

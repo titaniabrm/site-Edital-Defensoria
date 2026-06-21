@@ -66,40 +66,42 @@ const logger = pino({
 });
 
 const objectiveQuestions = [
-  { id: 1, text: "O que e uma PETICAO INICIAL?", answer: 1, options: ["Documento que encerra o processo", "Documento que da inicio ao processo e apresenta o pedido", "Documento de defesa", "Documento de arquivamento"] },
-  { id: 2, text: "O que e um DESPACHO?", answer: 1, options: ["Decisao final do caso", "Documento administrativo para andamento no processo", "Defesa apresentada pela parte", "Documento de arquivamento"] },
-  { id: 3, text: "Caso nao existam provas suficientes para sustentar uma acusacao, o mais adequado e:", answer: 2, options: ["Aplicar punicao imediatamente", "Ignorar a falta de provas", "Solicitar mais diligencias ou producao de provas", "Encerrar imediatamente sem analise"] },
-  { id: 4, text: "O que e uma MANIFESTACAO?", answer: 0, options: ["Documento utilizado para apresentar posicionamento ou esclarecimento no processo", "Documento de prisao", "Arquivamento automatico", "Documento administrativo militar apenas"] },
-  { id: 5, text: "Qual e a funcao de uma DEFESA?", answer: 1, options: ["Acusar uma parte", "Garantir contraditorio e apresentar argumentos/provas", "Arquivar processo", "Aplicar punicao"] },
-  { id: 6, text: "O principio da AMPLA DEFESA significa:", answer: 0, options: ["A parte pode apresentar argumentos e provas para se defender", "O processo deve ser rapido apenas", "Apenas autoridades podem se manifestar", "A defesa e opcional"] },
-  { id: 7, text: "O que significa \"juntar aos autos\"?", answer: 2, options: ["Arquivar processo", "Aplicar penalidade", "Adicionar documentos ao processo", "Excluir provas"] },
-  { id: 8, text: "O que e uma PROVA DOCUMENTAL?", answer: 1, options: ["Testemunho verbal apenas", "Documento ou registro que auxilia a comprovar fatos", "Opiniao pessoal", "Hipotese sem fundamento"] },
-  { id: 9, text: "Se uma prova apresentar inconsistencias, deve-se:", answer: 2, options: ["Ignorar o problema", "Considera-la automaticamente verdadeira", "Verificar autenticidade e buscar esclarecimentos", "Arquivar imediatamente"] },
-  { id: 10, text: "O que significa um pedido ser DEFERIDO?", answer: 1, options: ["Foi recusado", "Foi aprovado/aceito", "Foi arquivado", "Foi cancelado automaticamente"] },
-  { id: 11, text: "O que significa um pedido ser INDEFERIDO?", answer: 2, options: ["Foi aceito", "Foi encaminhado", "Foi recusado", "Foi colocado em sigilo"] },
-  { id: 12, text: "Qual e a funcao da fase de instrucao processual?", answer: 1, options: ["Encerrar o processo", "Produzir e analisar provas e informacoes", "Aplicar penalidades", "Arquivar documentos"] },
-  { id: 13, text: "O CONTRADITORIO significa:", answer: 1, options: ["Apenas uma parte pode falar", "Direito das partes se manifestarem sobre fatos e provas", "O processo nao precisa de provas", "O processo pode terminar sem defesa"] },
-  { id: 14, text: "O que deve orientar a analise de um processo?", answer: 2, options: ["Opiniao pessoal", "Pressa para finalizar", "Imparcialidade e analise dos fatos/provas", "Preferencia hierarquica"] },
-  { id: 15, text: "Surgindo novas provas importantes durante a tramitacao, o correto e:", answer: 1, options: ["Ignorar", "Analisar e incluir no processo conforme procedimento", "Encerrar imediatamente", "Remover provas anteriores"] }
+  { id: 1, text: "O que faz a Defensoria?", answer: 1, options: ["Acusa membros infratores", "Defende membros que foram processados", "Julga os processos", "Aplica punições"] },
+  { id: 2, text: "Qual a diferença entre a Defensoria e a OAEx?", answer: 2, options: ["Não há diferença", "A Defensoria julga e a OAEx defende", "A Defensoria defende quem precisa; a OAEx atua como advogados", "A OAEx só acusa"] },
+  { id: 3, text: "O que é uma Contestação?", answer: 1, options: ["A peça que abre o processo", "A peça de defesa que responde à acusação", "A decisão do juiz", "Um recurso"] },
+  { id: 4, text: 'O que significa "improcedente"?', answer: 2, options: ["O réu foi condenado", "O pedido da acusação foi aceito", "O pedido da acusação foi rejeitado", "O processo foi adiado"] },
+  { id: 5, text: "O que é o dolo?", answer: 0, options: ["A intenção deliberada de cometer o ato", "Um erro sem intenção", "Uma testemunha", "Um tipo de recurso"] },
+  { id: 6, text: "Qual a diferença entre calúnia, difamação e injúria?", answer: 1, options: ["São a mesma coisa", "Calúnia inventa crime, difamação espalha fato negativo, injúria ofende diretamente", "Injúria é a mais grave", "Difamação é inventar crime"] },
+  { id: 7, text: "O que é um recurso de apelação?", answer: 1, options: ["Abrir um novo processo", "Pedir a revisão de uma sentença desfavorável", "Desistir do processo", "Uma testemunha"] },
+  { id: 8, text: "Quem tem o dever de provar a acusação?", answer: 2, options: ["O réu", "O juiz", "Quem acusa (parte autora)", "A Defensoria"] },
+  { id: 9, text: "O que é a presunção de inocência?", answer: 1, options: ["Todos são culpados até provar o contrário", "Ninguém pode ser punido sem prova concreta da culpa", "O juiz decide sem provas", "A Defensoria sempre vence"] },
+  { id: 10, text: "Quando a Defensoria pode abrir um processo?", answer: 2, options: ["Nunca", "Sempre", "Quando os advogados da OAEx não tiverem interesse no caso", "Só com autorização do réu"] }
 ];
 
+// As subjetivas guardam um gabarito (modelAnswer) que so a banca enxerga no
+// painel - o candidato recebe apenas id + text (ver buildExamForSession).
 const subjectiveQuestions = [
-  "Explique com suas palavras o que e uma PETICAO INICIAL.",
-  "O que e um despacho e qual sua finalidade dentro de um processo?",
-  "O que deve ser feito quando um processo nao possui provas suficientes?",
-  "Explique o que e uma MANIFESTACAO processual.",
-  "Qual a importancia da ampla defesa em um procedimento?",
-  "O que significa agir com imparcialidade durante uma analise processual?",
-  "Explique a diferenca entre despacho, decisao e sentenca.",
-  "O que caracteriza uma prova valida em um processo?",
-  "Qual a funcao da defesa dentro de um procedimento?",
-  "O que deve ser analisado antes de emitir um parecer sobre um caso?",
-  "Qual a importancia da organizacao documental em um processo?",
-  "Como agir diante de informacoes contraditorias dentro de um caso?",
-  "Explique a importancia dos prazos processuais.",
-  "Qual deve ser a postura ideal de um membro da Defensoria durante a analise de um caso?",
-  "Em suas palavras, explique a importancia da analise de provas dentro de um procedimento."
-].map((text, index) => ({ id: index + 16, text }));
+  { text: "O que é a Defensoria e qual seu papel?", modelAnswer: "A Defensoria é o órgão responsável por defender membros que foram processados, garantindo que ninguém seja julgado sem ter direito a uma defesa justa." },
+  { text: "Por que o direito de defesa é importante?", modelAnswer: "Porque garante justiça e equilíbrio no processo, evitando que alguém seja punido injustamente sem poder se explicar ou apresentar sua versão." },
+  { text: "O que faria diante de um caso sem provas contra o cliente?", modelAnswer: "Apontaria a ausência de provas e pediria a improcedência, pois ninguém pode ser punido sem prova concreta da culpa." },
+  { text: "O que é o contraditório?", modelAnswer: "É o direito de cada parte responder, rebater e se manifestar sobre o que a outra parte alegou no processo." },
+  { text: "O que é proporcionalidade em uma punição?", modelAnswer: "É a punição ser compatível com a gravidade da conduta, sem ser leve demais nem severa demais para o que foi cometido." },
+  { text: "Cliente culpado, mas com punição exagerada, o que faria?", modelAnswer: "Não negaria os fatos, mas argumentaria a favor da redução da pena com base no princípio da proporcionalidade." },
+  { text: "Por que a Defensoria não atua em tickets de abertura de processo?", modelAnswer: "Porque sua função é defender, não acusar. Abrir processo é função dos advogados da OAEx, salvo quando estes não têm interesse no caso." },
+  { text: "O que é boa-fé e por que importa na defesa?", modelAnswer: "É agir sem intenção de prejudicar ou enganar. Importa porque demonstra ausência de dolo do cliente, podendo atenuar ou afastar a punição." },
+  { text: "Como trataria um cliente difícil ou nervoso?", modelAnswer: "Com paciência, respeito e profissionalismo, garantindo a melhor defesa possível independentemente do comportamento dele." },
+  { text: "O que faria se não soubesse montar uma peça?", modelAnswer: "Buscaria ajuda, solicitaria aula de reforço ou orientação de um defensor mais experiente, demonstrando vontade de aprender." },
+  { text: "Por que a hierarquia é importante na Defensoria?", modelAnswer: "Porque mantém a organização, o respeito, a disciplina e o bom funcionamento do órgão." },
+  { text: "A Defensoria é imparcial?", modelAnswer: "Não. A Defensoria é parcial por função, ou seja, atua sempre a favor do cliente que defende. Quem é imparcial é o juiz." },
+  { text: "O que faria ao descobrir prova que prejudica o próprio cliente?", modelAnswer: "Não usaria essa prova contra ele e buscaria a melhor estratégia de defesa possível dentro da ética, sem mentir, mas sem prejudicar o cliente." },
+  { text: "Por que dedicação e tempo de casa importam para crescer?", modelAnswer: "Porque os cargos são conquistados com trabalho, confiança e evolução demonstrada ao longo do tempo, não por seleção rápida." },
+  { text: "Por que quer entrar na Defensoria?", modelAnswer: "Resposta pessoal e livre. Avaliar sinceridade, vontade de ajudar, aprender e contribuir com o órgão." },
+  { text: "Ex tunc x ex nunc:", modelAnswer: '"Ex tunc" significa efeito retroativo (a decisão volta ao início, como se a punição nunca tivesse existido). "Ex nunc" significa efeito apenas a partir de agora (válido daqui pra frente). O efeito "ex tunc" seria o mais favorável a quem busca restituição integral dos cargos, pois apaga a punição desde a origem, restaurando tudo como era antes.' },
+  { text: "Fungibilidade recursal:", modelAnswer: "É o princípio que permite que um recurso interposto de forma errada seja aceito como o recurso correto, desde que não haja erro grosseiro e que tenha sido apresentado dentro do prazo, em nome do aproveitamento dos atos e do acesso à justiça." },
+  { text: "Non reformatio in pejus:", modelAnswer: "É o princípio que impede que a situação de quem recorre seja piorada em razão do seu próprio recurso. Ou seja, se só o réu recorre, ele não pode sair com uma punição maior do que já tinha, pois isso desestimularia o direito de recorrer." },
+  { text: "Preclusão (temporal, lógica e consumativa):", modelAnswer: "Temporal: perda do direito de praticar um ato por ter passado o prazo (ex: não recorrer dentro das 24h). Lógica: perda do direito por praticar ato incompatível com outro já feito (ex: aceitar a sentença e depois tentar recorrer dela). Consumativa: perda do direito porque o ato já foi praticado uma vez (ex: já apresentou a defesa, não pode apresentar outra para 'completar')." },
+  { text: "Frutos da árvore envenenada:", modelAnswer: 'É a teoria segundo a qual uma prova obtida de forma ilícita (a "árvore envenenada") contamina todas as outras provas que dela derivam (os "frutos"), tornando-as igualmente inválidas. Assim, prova ilícita e tudo que dela decorre não podem ser usados no processo.' }
+].map((q, index) => ({ id: index + 11, text: q.text, modelAnswer: q.modelAnswer }));
 
 function fnv1a(value) {
   let hash = 0x811c9dc5;
@@ -194,6 +196,21 @@ function getMinFormDuration() {
 function getAllowedDiscord() {
   const list = runtimeConfig.discordAllowedUsers;
   return Array.isArray(list) && list.length ? list : DISCORD_ALLOWED_USERS;
+}
+
+// Decide se a sessao e admin AGORA, reavaliando a allowlist ao vivo. Assim um
+// admin recem-adicionado ganha acesso no proximo carregamento sem precisar
+// relogar, e quem foi removido perde acesso na hora. Quando o 2FA por cargo
+// do Discord esta ligado, mantem o que foi gravado no login (o cargo nao da
+// pra reverificar sem o token), mas ainda exige estar na allowlist.
+function isSessionAdmin(session) {
+  if (!session || !session.username) return false;
+  const inAllowlist = getAllowedDiscord().includes(String(session.username).toLowerCase());
+  const roleCheckOn = Boolean(DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID);
+  if (roleCheckOn) return Boolean(session.isAdmin) && inAllowlist;
+  // Sessao "admin pura" (PIN/testes) nao tem username de Discord na allowlist.
+  if (session.isAdmin && (session.discordId === null || session.username === "admin")) return true;
+  return inAllowlist;
 }
 // 0 = sem limite; numero positivo = teto de aprovados que o painel respeita.
 function getMaxApproved() {
@@ -599,12 +616,19 @@ function isValidAdminSession(token) {
   return Boolean(session && session.isAdmin);
 }
 
+// Em producao (HTTPS/Vercel) marca o cookie como Secure - alguns navegadores
+// e modos de privacidade recusam cookie de sessao sem Secure em site HTTPS,
+// o que fazia o login "so funcionar em aba anonima". Em localhost fica sem
+// Secure pra continuar testavel via http.
+const COOKIE_SECURE = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
 function setSessionCookie(res, token) {
-  res.setHeader("Set-Cookie", `dge_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=28800`);
+  const secure = COOKIE_SECURE ? " Secure;" : "";
+  res.setHeader("Set-Cookie", `dge_session=${encodeURIComponent(token)}; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=28800`);
 }
 
 function clearSessionCookie(res) {
-  res.setHeader("Set-Cookie", "dge_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0");
+  const secure = COOKIE_SECURE ? " Secure;" : "";
+  res.setHeader("Set-Cookie", `dge_session=; HttpOnly;${secure} SameSite=Lax; Path=/; Max-Age=0`);
 }
 
 // Compat: nome antigo usado nos fluxos de PIN/magic link.
@@ -864,7 +888,9 @@ export {
   hashIdentifier,
   validateSubmission,
   createOAuthState,
-  verifyOAuthState
+  verifyOAuthState,
+  isSessionAdmin,
+  getAllowedDiscord
 };
 
 function validateSubmission(body, session) {
@@ -1380,11 +1406,14 @@ function readSession(req) {
   return verifySession(cookies.dge_session) || verifySession(bearer);
 }
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
+  // Garante config fresca (allowlist) antes de decidir admin - importante no
+  // serverless, onde a instancia pode ter uma copia antiga em memoria.
+  await ensureConfig().catch(() => {});
   const session = readSession(req);
   const hasPassword = req.header("x-admin-pin") === ADMIN_PIN;
 
-  if (session && session.isAdmin) {
+  if (isSessionAdmin(session)) {
     req.session = session;
     next();
     return;
@@ -1435,7 +1464,7 @@ function verifySeedSignature(seed, signature) {
 app.get("/api/exam", requireSession, async (req, res) => {
   await ensureConfig();
   const isOpen = withinExamWindow();
-  const isAdmin = Boolean(req.session.isAdmin);
+  const isAdmin = isSessionAdmin(req.session);
 
   if (isMaintenanceMode() && !isAdmin) {
     res.status(503).json({ error: "O sistema está em manutenção. Voltamos em breve." });
@@ -1853,6 +1882,8 @@ app.get("/api/admin/discord/callback", async (req, res) => {
 
     // Qualquer conta Discord pode fazer a prova. So entra como admin se
     // estiver na allowlist (e tiver o cargo exigido, se configurado).
+    // Recarrega config antes pra enxergar admins adicionados ha pouco.
+    await ensureConfig().catch(() => {});
     const inAllowlist = getAllowedDiscord().includes(username);
     let roleOk = true;
     if (inAllowlist && DISCORD_GUILD_ID && DISCORD_REQUIRED_ROLE_ID) {
@@ -1922,7 +1953,8 @@ app.get("/api/avatar/:discordId/:hash", async (req, res) => {
 });
 
 // Quem esta logado agora (candidato ou admin).
-app.get("/api/session", (req, res) => {
+app.get("/api/session", async (req, res) => {
+  await ensureConfig().catch(() => {});
   const session = readSession(req);
   if (!session) {
     res.json({ authenticated: false });
@@ -1933,7 +1965,8 @@ app.get("/api/session", (req, res) => {
     username: session.username,
     discordId: session.discordId,
     avatarUrl: session.avatarUrl || null,
-    isAdmin: Boolean(session.isAdmin)
+    // isAdmin reavaliado ao vivo: admin recem-adicionado ja entra no painel.
+    isAdmin: isSessionAdmin(session)
   });
 });
 
@@ -1995,7 +2028,7 @@ function rateLimitSubmissions(req, res, next) {
 app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, res) => {
   try {
     await ensureConfig();
-    if (isMaintenanceMode() && !req.session.isAdmin) {
+    if (isMaintenanceMode() && !isSessionAdmin(req.session)) {
       res.status(503).json({ error: "Sistema em manutenção. Tente novamente em alguns minutos." });
       return;
     }
@@ -2114,12 +2147,16 @@ app.post("/api/submissions", requireSession, rateLimitSubmissions, async (req, r
 app.get("/api/admin/submissions", requireAdmin, async (req, res) => {
   try {
     const submissions = await listSubmissions();
+    // Mapa id -> gabarito sugerido, so para a banca comparar no painel.
+    const modelById = new Map(subjectiveQuestions.map((q) => [Number(q.id), q.modelAnswer]));
     // Anexa a versao renderizada das respostas subjetivas para a banca ler
-    // com formatacao (negrito/italico/lista) sem precisar renderizar no client.
+    // com formatacao (negrito/italico/lista) sem precisar renderizar no client,
+    // e o gabarito de referencia de cada questao.
     submissions.forEach((s) => {
       s.subjectiveAnswers = (s.subjectiveAnswers || []).map((a) => ({
         ...a,
-        answerHtml: renderLightMarkdown(a.answer)
+        answerHtml: renderLightMarkdown(a.answer),
+        modelAnswer: modelById.get(Number(a.id)) || null
       }));
     });
     res.json(submissions);

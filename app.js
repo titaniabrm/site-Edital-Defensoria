@@ -640,7 +640,11 @@ function updateProgress() {
     return value.trim() && countWords(value) >= 5;
   }).length;
 
-  const counts = { identidade: [identityDone, 2], objetivas: [objectiveDone, 15], subjetivas: [subjectiveDone, 15] };
+  const counts = {
+    identidade: [identityDone, 2],
+    objetivas: [objectiveDone, objectiveQuestions.length],
+    subjetivas: [subjectiveDone, subjectiveQuestions.length]
+  };
   sectionProgress?.querySelectorAll("li").forEach((li) => {
     const [done, total] = counts[li.dataset.section];
     li.querySelector("strong").textContent = `${done}/${total}`;
@@ -688,9 +692,9 @@ function openConfirmModal() {
   }).length;
 
   const rows = [
-    { label: "Identificacao", done: identity, total: 2 },
-    { label: "Objetivas", done: objectiveDone, total: 15 },
-    { label: "Subjetivas", done: subjectiveDone, total: 15 }
+    { label: "Identificação", done: identity, total: 2 },
+    { label: "Objetivas", done: objectiveDone, total: objectiveQuestions.length },
+    { label: "Subjetivas", done: subjectiveDone, total: subjectiveQuestions.length }
   ];
   confirmModalSummary.innerHTML = rows.map((row) => `
     <li class="${row.done === row.total ? "" : "missing"}">

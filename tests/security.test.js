@@ -9,7 +9,9 @@ import {
   hashIdentifier,
   shuffleWithSeed,
   jaccard,
-  shingles
+  shingles,
+  isSessionAdmin,
+  getAllowedDiscord
 } from "../server.js";
 
 describe("sessao unificada (candidato + admin)", () => {
@@ -56,6 +58,24 @@ describe("sessao unificada (candidato + admin)", () => {
 
   it("createAdminSession continua funcionando (compat)", () => {
     expect(isValidAdminSession(createAdminSession())).toBe(true);
+  });
+
+  it("isSessionAdmin reavalia a allowlist ao vivo (admin recem-adicionado entra sem relogar)", () => {
+    const allowed = getAllowedDiscord()[0]; // ex.: mudinhoxy
+    // Sessao gravada como candidato (isAdmin:false) mas o username ja esta na
+    // allowlist agora -> deve ser admin sem precisar relogar.
+    expect(isSessionAdmin({ username: allowed, isAdmin: false, discordId: "123" })).toBe(true);
+    // Case-insensitive.
+    expect(isSessionAdmin({ username: allowed.toUpperCase(), isAdmin: false, discordId: "9" })).toBe(true);
+  });
+
+  it("isSessionAdmin revoga acesso de quem saiu da allowlist mesmo com isAdmin gravado", () => {
+    expect(isSessionAdmin({ username: "ninguem_aqui_999", isAdmin: true, discordId: "1" })).toBe(false);
+    expect(isSessionAdmin(null)).toBe(false);
+  });
+
+  it("isSessionAdmin mantem a sessao PIN pura (sem discord) como admin", () => {
+    expect(isSessionAdmin({ username: "admin", isAdmin: true, discordId: null })).toBe(true);
   });
 });
 
