@@ -119,7 +119,13 @@ function applySessionUI() {
     logoutButton?.classList.remove("hidden");
     if (userBadge) {
       userBadge.classList.remove("hidden");
-      if (userAvatar && currentSession.avatarUrl) userAvatar.src = currentSession.avatarUrl;
+      if (userAvatar) {
+        // Fallback se a sessao (antiga) nao trouxer avatarUrl ou se a imagem
+        // do Discord falhar - usa um dos 6 avatares default da plataforma.
+        const fallback = "https://cdn.discordapp.com/embed/avatars/0.png";
+        userAvatar.src = currentSession.avatarUrl || fallback;
+        userAvatar.onerror = () => { userAvatar.src = fallback; };
+      }
       if (userName) userName.textContent = `@${currentSession.username || ""}`;
     }
     if (loggedDiscordLabel) loggedDiscordLabel.textContent = `@${currentSession.username}`;

@@ -350,31 +350,18 @@ function renderLightMarkdown(text) {
   return html;
 }
 
-async function notifyDiscord(submission, baseUrl) {
+// ---- Webhook helpers ----
+const WEBHOOK_USERNAME = "Defensoria-Geral do Exercito";
+const WEBHOOK_AVATAR = "https://cdn.discordapp.com/embed/avatars/0.png";
+const WEBHOOK_FOOTER = "Sistema de Avaliacao DGE";
+
+async function postWebhook(payload) {
   if (!DISCORD_WEBHOOK_URL) return;
-  const target = `${(baseUrl || DEFENSORIA_URL).replace(/\/$/, "")}/admin`;
-  const payload = {
-    username: "Defensoria-Geral do Exercito",
-    embeds: [{
-      title: "Novo envio registrado",
-      url: target || undefined,
-      color: 0xd7ad5d,
-      fields: [
-        { name: "Discord", value: submission.identity.discord || "-", inline: true },
-        { name: "Roblox", value: submission.identity.roblox || "-", inline: true },
-        { name: "Tempo no EB", value: submission.identity.tempoEb || "-", inline: true },
-        { name: "Objetivas", value: `${submission.objectiveScore}/${submission.objectiveTotal} (${submission.performancePercent}%)`, inline: true },
-        { name: "Risco IA medio", value: `${submission.aiRiskAverage}%`, inline: true },
-        { name: "Status", value: submission.status, inline: true }
-      ],
-      timestamp: submission.submittedAt
-    }]
-  };
   try {
     const response = await fetch(DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ username: WEBHOOK_USERNAME, ...payload })
     });
     if (!response.ok) logger.warn({ status: response.status }, "discord webhook nao OK");
   } catch (error) {
@@ -382,25 +369,57 @@ async function notifyDiscord(submission, baseUrl) {
   }
 }
 
-// Avisa no canal do webhook quando um candidato e aprovado/reprovado.
-// Nao e uma DM (precisaria de um bot Discord configurado) - usa o mesmo
-// webhook que ja avisa sobre novos envios.
-async function notifyStatusChange(identity, status) {
+// Avisa quando um candidato envia o formulario. Cor neutra (azul) pois
+// ainda esta em analise; nenhum resultado e exposto - so identificacao
+// e que ha algo novo pra banca olhar.
+async function notifyDiscord(submission, baseUrl) {
+  if (!DISCORD_WEBHOOK_URL) return;
+  const target = `${(baseUrl || DEFENSORIA_URL).replace(/\/$/, "")}/admin#submission/${submission.id}`;
+  const id = submission.identity || {};
+  await postWebhook({
+    embeds: [{
+      author: { name: "📥 Nova inscricao recebida" },
+      title: `@${id.discord || "candidato"}`,
+      url: target,
+      description: "Um candidato enviou suas respostas e esta aguardando avaliacao da banca.",
+      color: 0x4a6f8a,
+      fields: [
+        { name: "🎮 Roblox", value: id.roblox || "—", inline: true },
+        { name: "⏱ Tempo no EB", value: id.tempoEb || "—", inline: true },
+        { name: "🕐 Recebido", value: `<t:${Math.floor(new Date(submission.submittedAt).getTime() / 1000)}:R>`, inline: true }
+      ],
+      footer: { text: `${WEBHOOK_FOOTER} • clique no nome pra abrir no painel` },
+      timestamp: submission.submittedAt
+    }]
+  });
+}
+
+// Avisa quando admin aprova/reprova um candidato. Cor + emoji muda
+// conforme decisao, com link direto pra ficha no painel.
+async function notifyStatusChange(identity, status, baseUrl, submissionId) {
   if (!DISCORD_WEBHOOK_URL || !identity) return;
-  const emoji = status === "Aprovado" ? "✅" : status === "Reprovado" ? "❌" : "🔎";
-  try {
-    const response = await fetch(DISCORD_WEBHOOK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "Defensoria-Geral do Exercito",
-        content: `${emoji} Candidato **@${identity.discord || "?"}** teve o status atualizado para **${status}**.`
-      })
-    });
-    if (!response.ok) logger.warn({ status: response.status }, "status webhook nao OK");
-  } catch (error) {
-    logger.warn({ err: error.message }, "status webhook falhou");
-  }
+  const config = {
+    Aprovado: { emoji: "✅", color: 0x287355, title: "Candidato aprovado", text: "Bem-vindo a Defensoria-Geral do Exercito!" },
+    Reprovado: { emoji: "❌", color: 0xb73d35, title: "Candidato reprovado", text: "Resultado divulgado ao candidato." },
+    "Em analise": { emoji: "🔎", color: 0xb97518, title: "Voltou para analise", text: "A banca reabriu a avaliacao deste candidato." }
+  };
+  const cfg = config[status] || { emoji: "ℹ️", color: 0x65717b, title: "Status atualizado", text: "" };
+  const url = submissionId && baseUrl ? `${baseUrl.replace(/\/$/, "")}/admin#submission/${submissionId}` : undefined;
+  await postWebhook({
+    embeds: [{
+      author: { name: `${cfg.emoji} ${cfg.title}` },
+      title: `@${identity.discord || "candidato"}`,
+      url,
+      description: cfg.text,
+      color: cfg.color,
+      fields: [
+        { name: "Status", value: `**${status}**`, inline: true },
+        { name: "Quando", value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true }
+      ],
+      footer: { text: WEBHOOK_FOOTER },
+      timestamp: new Date().toISOString()
+    }]
+  });
 }
 
 // Monitoramento externo simples: erros 5xx vao para o webhook Discord com
@@ -2114,7 +2133,7 @@ app.patch("/api/admin/submissions/:id/status", requireAdmin, async (req, res) =>
     const entry = await updateSubmissionStatus(req.params.id, status, note, "admin");
     logger.info({ event: "submission.status", id: req.params.id, status }, "status atualizado");
     recordAudit("submission.status", "admin", req.params.id, { status }, req);
-    if (target) notifyStatusChange(target.identity, status);
+    if (target) notifyStatusChange(target.identity, status, `${req.protocol}://${req.get("host")}`, req.params.id);
     res.json({ ok: true, status, entry });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao atualizar status." });
@@ -2209,8 +2228,7 @@ app.get("/api/admin/active", requireAdmin, async (req, res) => {
   res.json({ active: await countActivePresence(), windowMs: PRESENCE_WINDOW_MS });
 });
 
-// Envia para o canal do webhook a tabela atual de aprovados ordenada por nota
-// manual (desempate: % de objetivas). Roda quando o admin clica o botao.
+// Envia o ranking dos aprovados como embed bonito (top 3 destacados).
 app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
   if (!DISCORD_WEBHOOK_URL) {
     res.status(400).json({ error: "DISCORD_WEBHOOK_URL nao configurado." });
@@ -2229,24 +2247,28 @@ app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
       if (gradeB !== gradeA) return gradeB - gradeA;
       return (b.performancePercent || 0) - (a.performancePercent || 0);
     });
-    const lines = approved.map((s, i) => {
-      const note = s.manualGrade != null ? `nota ${s.manualGrade}` : `${s.performancePercent}% objetivas`;
-      return `**${i + 1}º** — @${s.identity.discord || "?"} (${note})`;
+    const medal = (i) => i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `\`#${String(i + 1).padStart(2, " ")}\``;
+    const lines = approved.slice(0, 25).map((s, i) => {
+      const detail = s.manualGrade != null
+        ? `📝 **${s.manualGrade.toFixed(1)}** • ✅ ${s.performancePercent}%`
+        : `✅ ${s.performancePercent}% objetivas`;
+      return `${medal(i)} **@${s.identity.discord || "?"}**\n┗ ${detail}`;
     });
-    const payload = {
-      username: "Defensoria-Geral do Exercito",
-      embeds: [{
-        title: `🏆 Ranking dos aprovados (${approved.length})`,
-        description: lines.slice(0, 25).join("\n"),
-        color: 0xd7ad5d,
-        timestamp: new Date().toISOString(),
-        footer: lines.length > 25 ? { text: `+${lines.length - 25} candidatos nao exibidos` } : undefined
-      }]
-    };
+    const extra = approved.length > 25 ? `\n\n*+${approved.length - 25} candidato(s) nao exibido(s)*` : "";
     const wh = await fetch(DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        username: WEBHOOK_USERNAME,
+        embeds: [{
+          author: { name: "🏆 Ranking Oficial — Aprovados" },
+          title: `${approved.length} candidato(s) aprovado(s)`,
+          description: lines.join("\n\n") + extra,
+          color: 0xd7ad5d,
+          footer: { text: `${WEBHOOK_FOOTER} • ordenado por nota manual` },
+          timestamp: new Date().toISOString()
+        }]
+      })
     });
     if (!wh.ok) throw new Error(`webhook respondeu ${wh.status}`);
     recordAudit("ranking.send", req.session.username, null, { count: approved.length }, req);
@@ -2256,7 +2278,7 @@ app.post("/api/admin/ranking/send", requireAdmin, async (req, res) => {
   }
 });
 
-// Estatisticas da semana (ultimos 7 dias) para o canal do webhook.
+// Estatisticas da semana (ultimos 7 dias) - resumo executivo bonito.
 app.post("/api/admin/stats/send", requireAdmin, async (req, res) => {
   if (!DISCORD_WEBHOOK_URL) {
     res.status(400).json({ error: "DISCORD_WEBHOOK_URL nao configurado." });
@@ -2276,26 +2298,32 @@ app.post("/api/admin/stats/send", requireAdmin, async (req, res) => {
     const avgScore = recent.length
       ? Math.round(recent.reduce((sum, s) => sum + (s.performancePercent || 0), 0) / recent.length)
       : 0;
-    const payload = {
-      username: "Defensoria-Geral do Exercito",
-      embeds: [{
-        title: "📊 Estatisticas semanais",
-        color: 0x4f6a50,
-        fields: [
-          { name: "Envios na semana", value: String(totals.weekTotal), inline: true },
-          { name: "Total geral", value: String(totals.total), inline: true },
-          { name: "Media de objetivas (semana)", value: `${avgScore}%`, inline: true },
-          { name: "Aprovados", value: String(totals.approved), inline: true },
-          { name: "Reprovados", value: String(totals.rejected), inline: true },
-          { name: "Em analise", value: String(totals.pending), inline: true }
-        ],
-        timestamp: new Date().toISOString()
-      }]
-    };
+    // Mini barra de progresso visual mostrando proporcao aprovados/reprovados.
+    const decided = totals.approved + totals.rejected;
+    const approveRate = decided ? Math.round((totals.approved / decided) * 100) : 0;
+    const filled = Math.round(approveRate / 10);
+    const bar = "█".repeat(filled) + "░".repeat(10 - filled);
+
     const wh = await fetch(DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        username: WEBHOOK_USERNAME,
+        embeds: [{
+          author: { name: "📊 Relatorio Semanal" },
+          title: "Resumo dos ultimos 7 dias",
+          description: `**${totals.weekTotal}** novos envios esta semana\n**${avgScore}%** de media nas objetivas\n\n**Taxa de aprovacao** (entre os decididos)\n\`${bar}\` ${approveRate}%`,
+          color: 0x4f6a50,
+          fields: [
+            { name: "✅ Aprovados", value: `**${totals.approved}**`, inline: true },
+            { name: "❌ Reprovados", value: `**${totals.rejected}**`, inline: true },
+            { name: "🔎 Em analise", value: `**${totals.pending}**`, inline: true },
+            { name: "📈 Total geral acumulado", value: `**${totals.total}** envios desde o inicio do edital`, inline: false }
+          ],
+          footer: { text: WEBHOOK_FOOTER },
+          timestamp: new Date().toISOString()
+        }]
+      })
     });
     if (!wh.ok) throw new Error(`webhook respondeu ${wh.status}`);
     recordAudit("stats.send", req.session.username, null, totals, req);

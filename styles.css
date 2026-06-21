@@ -1622,30 +1622,6 @@ footer {
 [data-theme="dark"] .countdown-display { color: var(--gold); }
 
 /* ---- Painel admin: filtros avancados ---- */
-.advanced-filters {
-  margin: 10px 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
-  background: var(--surface);
-}
-.advanced-filters summary {
-  cursor: pointer;
-  font-weight: 700;
-  color: var(--navy);
-}
-.advanced-filter-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 0.85rem;
-}
-.advanced-filter-grid label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 /* ---- Painel admin: acoes em lote ---- */
 .bulk-actions {

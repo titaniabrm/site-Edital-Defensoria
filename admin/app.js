@@ -228,22 +228,10 @@ function updateBulkUI() {
   }
 }
 
-function readAdvancedFilters() {
-  return {
-    devtools: document.querySelector("#advFilterDevtools")?.checked,
-    sameDevice: document.querySelector("#advFilterSameDevice")?.checked,
-    hasGrade: document.querySelector("#advFilterHasGrade")?.checked,
-    noGrade: document.querySelector("#advFilterNoGrade")?.checked,
-    highSimilarity: document.querySelector("#advFilterHighSimilarity")?.checked,
-    hasReviewer: document.querySelector("#advFilterHasReviewer")?.checked
-  };
-}
-
 function getFilteredSubmissions() {
   const filter = riskFilter?.value || "all";
   const sort = sortBy?.value || "date";
   const term = normalizeText(searchInput?.value || "");
-  const adv = readAdvancedFilters();
 
   let submissions = [...loadedSubmissions];
 
@@ -263,14 +251,6 @@ function getFilteredSubmissions() {
   } else if (filter === "rejected") {
     submissions = submissions.filter((item) => item.status === "Reprovado");
   }
-
-  // Filtros avancados (AND): cada checkbox marcado restringe a lista.
-  if (adv.devtools) submissions = submissions.filter((s) => s.devtoolsOpened);
-  if (adv.sameDevice) submissions = submissions.filter((s) => s.fingerprintMatches?.length);
-  if (adv.hasGrade) submissions = submissions.filter((s) => s.manualGrade != null);
-  if (adv.noGrade) submissions = submissions.filter((s) => s.manualGrade == null);
-  if (adv.highSimilarity) submissions = submissions.filter((s) => (s.similaritySummary?.maxRatio || 0) >= 55);
-  if (adv.hasReviewer) submissions = submissions.filter((s) => s.reviewer);
 
   if (sort === "score") {
     submissions.sort((a, b) => (b.objectiveScore / b.objectiveTotal) - (a.objectiveScore / a.objectiveTotal));
@@ -945,7 +925,11 @@ function renderUserBadge(data) {
   }
   const avatar = document.querySelector("#userAvatar");
   const name = document.querySelector("#userName");
-  if (avatar && data.avatarUrl) avatar.src = data.avatarUrl;
+  if (avatar) {
+    const fallback = "https://cdn.discordapp.com/embed/avatars/0.png";
+    avatar.src = data.avatarUrl || fallback;
+    avatar.onerror = () => { avatar.src = fallback; };
+  }
   if (name) name.textContent = `@${data.username || ""}`;
   badge.classList.remove("hidden");
 }
@@ -1151,9 +1135,6 @@ function bindEvents() {
       bulkSelection.clear();
       renderReview();
     }
-  });
-  document.querySelectorAll(".advanced-filter-grid input[type=checkbox]").forEach((cb) => {
-    cb.addEventListener("change", () => renderReview());
   });
   document.querySelector("#sendRankingButton")?.addEventListener("click", sendRanking);
   document.querySelector("#sendStatsButton")?.addEventListener("click", sendStats);
