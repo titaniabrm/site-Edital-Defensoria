@@ -1267,7 +1267,9 @@ function fromDbRow(row) {
     maxIdleMs: row.max_idle_ms || 0,
     autoSuggestedStatus: row.auto_suggested_status || null,
     manualGrade: row.manual_grade === null || row.manual_grade === undefined ? null : Number(row.manual_grade),
-    manualGradeNote: row.manual_grade_note || ""
+    manualGradeNote: row.manual_grade_note || "",
+    shortlisted: Boolean(row.shortlisted),
+    experienceRating: row.experience_rating === null || row.experience_rating === undefined ? null : Number(row.experience_rating)
   };
 }
 
@@ -1417,6 +1419,61 @@ async function updateManualGrade(id, grade, note) {
   submissions[index].manualGradeNote = noteValue;
   await writeLocalSubmissions(submissions);
   return { grade: parsedGrade, note: noteValue };
+}
+
+// Favoritar/desfavoritar candidato (shortlist da banca).
+async function updateShortlist(id, value) {
+  const flag = Boolean(value);
+  if (supabase) {
+    const { error } = await supabase.from("defensoria_submissions").update({ shortlisted: flag }).eq("id", id);
+    if (error) throw normalizeDatabaseError(error);
+    return flag;
+  }
+  const submissions = await readLocalSubmissions();
+  const index = submissions.findIndex((s) => s.id === id);
+  if (index === -1) throw new Error("Candidato não encontrado.");
+  submissions[index].shortlisted = flag;
+  await writeLocalSubmissions(submissions);
+  return flag;
+}
+
+// Nota de experiencia (1-10) que o proprio candidato da apos enviar.
+// So grava se ainda nao tiver avaliado (uma vez por candidato).
+async function saveExperienceRating(submissionId, rating) {
+  const n = Math.round(Number(rating));
+  if (!Number.isInteger(n) || n < 1 || n > 10) throw new Error("Nota deve ser de 1 a 10.");
+  if (supabase) {
+    const { data: existing } = await supabase
+      .from("defensoria_submissions").select("experience_rating").eq("id", submissionId).single();
+    if (existing && existing.experience_rating != null) return existing.experience_rating;
+    const { error } = await supabase.from("defensoria_submissions").update({ experience_rating: n }).eq("id", submissionId);
+    if (error) throw normalizeDatabaseError(error);
+    return n;
+  }
+  const submissions = await readLocalSubmissions();
+  const index = submissions.findIndex((s) => s.id === submissionId);
+  if (index === -1) throw new Error("Envio não encontrado.");
+  if (submissions[index].experienceRating != null) return submissions[index].experienceRating;
+  submissions[index].experienceRating = n;
+  await writeLocalSubmissions(submissions);
+  return n;
+}
+
+// Conta rascunhos salvos no servidor (proxy de "quantos comecaram a prova").
+async function countDrafts() {
+  if (supabase) {
+    const { count, error } = await supabase
+      .from("defensoria_drafts").select("client_id", { count: "exact", head: true });
+    if (error) throw normalizeDatabaseError(error);
+    return count || 0;
+  }
+  try {
+    const raw = await fs.readFile(DRAFTS_FILE, "utf8");
+    const data = JSON.parse(raw);
+    return data && typeof data === "object" ? Object.keys(data).length : 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function listSubmissions() {
@@ -1627,6 +1684,7 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
       submittedAt: submission.submittedAt,
       status: submission.status,
       decided,
+      experienceRating: submission.experienceRating ?? null,
       identity: {
         roblox: submission.identity?.roblox || "",
         tempoEb: submission.identity?.tempoEb || ""
@@ -1660,6 +1718,21 @@ app.get("/api/my-submission", requireSession, async (req, res) => {
   } catch (error) {
     logger.warn({ err: error.message }, "my-submission.failed");
     res.status(500).json({ error: "Erro ao carregar suas respostas." });
+  }
+});
+
+// O proprio candidato avalia a experiencia da prova (1-10), uma vez so.
+app.post("/api/submission-feedback", requireSession, async (req, res) => {
+  try {
+    const submission = await findSubmissionForSession(req.session);
+    if (!submission) {
+      res.status(404).json({ error: "Nenhum envio encontrado." });
+      return;
+    }
+    const rating = await saveExperienceRating(submission.id, req.body?.rating);
+    res.json({ ok: true, rating });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Nao foi possivel registrar sua avaliacao." });
   }
 });
 
@@ -2393,6 +2466,33 @@ app.patch("/api/admin/submissions/:id/grade", requireAdmin, async (req, res) => 
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(400).json({ error: error.message || "Erro ao salvar nota manual." });
+  }
+});
+
+app.patch("/api/admin/submissions/:id/shortlist", requireAdmin, async (req, res) => {
+  try {
+    const shortlisted = await updateShortlist(req.params.id, req.body?.shortlisted);
+    recordAudit("submission.shortlist", "admin", req.params.id, { shortlisted }, req);
+    res.json({ ok: true, shortlisted });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao favoritar. Rode a migracao do schema (shortlisted)." });
+  }
+});
+
+// Funil de conversao: quantos comecaram (rascunho), enviaram, foram decididos
+// e aprovados; mais a media da nota de experiencia.
+app.get("/api/admin/funnel", requireAdmin, async (req, res) => {
+  try {
+    const all = await listSubmissions();
+    const submitted = all.length;
+    const decided = all.filter((s) => s.status === "Aprovado" || s.status === "Reprovado").length;
+    const approved = all.filter((s) => s.status === "Aprovado").length;
+    const started = Math.max(await countDrafts().catch(() => 0), submitted);
+    const ratings = all.map((s) => s.experienceRating).filter((r) => r != null);
+    const avgRating = ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null;
+    res.json({ started, submitted, decided, approved, avgRating, ratingsCount: ratings.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao montar funil." });
   }
 });
 

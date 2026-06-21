@@ -92,6 +92,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* Escala de fonte controlada pelo menu de acessibilidade. */
+  font-size: calc(100% * var(--a11y-font-scale, 1));
 }
 
 body {
@@ -2161,3 +2163,185 @@ mark.ai-suspect-soft {
   font-size: 0.85rem;
 }
 [data-theme="dark"] .correct-answer { color: #6cdba0; }
+
+/* =============================================
+   Marca d'agua sobre a prova (anti-print)
+   ============================================= */
+.exam-watermark {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background-repeat: repeat;
+  background-position: center;
+}
+
+/* =============================================
+   Acessibilidade: menu de ajustes
+   ============================================= */
+.a11y-wrap {
+  position: relative;
+  display: inline-block;
+}
+.a11y-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  width: 240px;
+  padding: 14px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow, 0 12px 32px rgba(0, 0, 0, 0.18));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--ink);
+}
+.a11y-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.a11y-buttons {
+  display: flex;
+  gap: 6px;
+}
+.a11y-buttons button {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-weight: 700;
+}
+.a11y-buttons button:hover { border-color: var(--gold); }
+.a11y-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.a11y-check input { width: auto; }
+
+/* Alto contraste */
+[data-a11y-contrast="high"] {
+  --ink: #000;
+  --muted: #1a1a1a;
+}
+[data-a11y-contrast="high"][data-theme="dark"] {
+  --ink: #fff;
+  --muted: #e8e8e8;
+}
+[data-a11y-contrast="high"] .ghost-button,
+[data-a11y-contrast="high"] .secondary-button,
+[data-a11y-contrast="high"] input,
+[data-a11y-contrast="high"] textarea,
+[data-a11y-contrast="high"] select {
+  border-color: currentColor;
+}
+[data-a11y-contrast="high"] a { text-decoration: underline; }
+
+/* Leitura facilitada: mais espacamento e fonte mais legivel */
+[data-a11y-spacing="on"] body,
+[data-a11y-spacing="on"] .question-card,
+[data-a11y-spacing="on"] .answer-body,
+[data-a11y-spacing="on"] p,
+[data-a11y-spacing="on"] li,
+[data-a11y-spacing="on"] label {
+  letter-spacing: 0.03em;
+  word-spacing: 0.08em;
+  line-height: 1.8;
+}
+[data-a11y-spacing="on"] {
+  font-family: "Verdana", "Inter", sans-serif;
+}
+
+/* =============================================
+   Feedback pos-envio (nota de experiencia 1-10)
+   ============================================= */
+.experience-rating {
+  margin: 16px 0;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: rgba(215, 173, 93, 0.08);
+  border: 1px solid rgba(215, 173, 93, 0.3);
+  text-align: center;
+}
+.experience-label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.experience-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.experience-dot {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, color 120ms ease;
+}
+.experience-dot:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.08);
+  background: var(--gold);
+  color: #1a1303;
+  border-color: var(--gold);
+}
+.experience-dot:disabled { opacity: 0.5; cursor: default; }
+.experience-given { font-size: 1rem; }
+.experience-thanks {
+  margin: 10px 0 0;
+  font-weight: 600;
+  color: var(--success);
+}
+
+/* Estrela de favorito (shortlist) no painel */
+.star-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 2px 4px;
+  filter: grayscale(1);
+  opacity: 0.55;
+  transition: transform 120ms ease, opacity 120ms ease, filter 120ms ease;
+}
+.star-button:hover { transform: scale(1.2); opacity: 1; }
+.star-button.active { filter: none; opacity: 1; }
+
+/* Funil de conversao no overview */
+.funnel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.funnel-row {
+  display: grid;
+  grid-template-columns: 130px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.86rem;
+}
+.funnel-bar {
+  height: 16px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-2, #c79a4a));
+  min-width: 2px;
+}
+.funnel-row strong { font-variant-numeric: tabular-nums; }

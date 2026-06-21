@@ -34,8 +34,24 @@
       <button class="primary-button hidden" type="button" id="discordLoginButton">Entrar com Discord</button>
       <button class="ghost-button" type="button" id="themeToggle">Tema escuro</button>
       <button class="ghost-button candidate-only" type="button" data-scroll-target="formulario">Formulário</button>
+      <div class="a11y-wrap">
+        <button class="ghost-button" type="button" id="a11yToggle" aria-haspopup="true" aria-expanded="false" title="Acessibilidade">♿</button>
+        <div class="a11y-menu hidden" id="a11yMenu" role="menu">
+          <div class="a11y-row">
+            <span>Tamanho do texto</span>
+            <div class="a11y-buttons">
+              <button type="button" data-a11y-font="dec" aria-label="Diminuir texto">A−</button>
+              <button type="button" data-a11y-font="reset" aria-label="Texto padrão">A</button>
+              <button type="button" data-a11y-font="inc" aria-label="Aumentar texto">A+</button>
+            </div>
+          </div>
+          <label class="a11y-check"><input type="checkbox" id="a11yContrast"> Alto contraste</label>
+          <label class="a11y-check"><input type="checkbox" id="a11ySpacing"> Leitura facilitada</label>
+        </div>
+      </div>
     </nav>
   </header>
+  <div id="examWatermark" class="exam-watermark hidden" aria-hidden="true"></div>
 
   <main>
     <div id="examClosedBanner" class="exam-banner hidden" role="status"></div>
@@ -216,6 +232,11 @@
         <span class="pill" id="myStatusPill"></span>
       </div>
       <div id="resultFeedback" class="result-feedback hidden"></div>
+      <div id="experienceRating" class="experience-rating hidden">
+        <span class="experience-label">Como foi sua experiência com a prova? (1 a 10)</span>
+        <div class="experience-scale" id="experienceScale"></div>
+        <p class="experience-thanks hidden" id="experienceThanks">Obrigado pela avaliação! 🙏</p>
+      </div>
       <details class="modal-review" open>
         <summary>Ver minhas respostas enviadas</summary>
         <div id="myAnswersList" class="modal-review-list"></div>

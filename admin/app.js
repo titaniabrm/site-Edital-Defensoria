@@ -314,7 +314,9 @@ function getFilteredSubmissions() {
     });
   }
 
-  if (filter === "high") {
+  if (filter === "shortlisted") {
+    submissions = submissions.filter((item) => item.shortlisted);
+  } else if (filter === "high") {
     submissions = submissions.filter((item) => item.aiRiskAverage >= 35 || item.aiHighRiskCount > 0);
   } else if (filter === "review") {
     submissions = submissions.filter((item) => item.status === "Em analise");
@@ -415,8 +417,14 @@ function renderSubmissionDetail(submission) {
     .map((entry) => `<li><strong>${escapeHtml(entry.status)}</strong> - ${formatDate(entry.at)} (${escapeHtml(entry.by || "?")})${entry.note ? `<br><span>${escapeHtml(entry.note)}</span>` : ""}</li>`)
     .join("");
   const tags = Array.isArray(submission.tags) ? submission.tags : [];
+  const expRating = submission.experienceRating != null
+    ? `<div class="detail-box"><span>Avaliou a prova</span><strong>${submission.experienceRating}/10</strong></div>`
+    : "";
   submissionDetail.innerHTML = `
-    <h3>${escapeHtml(submission.identity.discord)} - ${escapeHtml(submission.identity.roblox)}</h3>
+    <h3>
+      <button class="star-button ${submission.shortlisted ? "active" : ""}" type="button" data-shortlist="${submission.id}" data-current="${submission.shortlisted ? "1" : "0"}" title="Favoritar candidato">${submission.shortlisted ? "★" : "☆"}</button>
+      ${escapeHtml(submission.identity.discord)} - ${escapeHtml(submission.identity.roblox)}
+    </h3>
     <div class="detail-actions">
       <span class="pill ${status.className}">${status.text}</span>
       <button class="secondary-button" type="button" data-download-pdf="${submission.id}">Baixar PDF</button>
@@ -447,6 +455,7 @@ function renderSubmissionDetail(submission) {
       <div class="detail-box"><span>Voltas na revisão</span><strong>${submission.reviewCount || 0}</strong></div>
       <div class="detail-box"><span>Maior inatividade</span><strong>${Math.round((submission.maxIdleMs || 0) / 1000)}s</strong></div>
       ${submission.autoSuggestedStatus ? `<div class="detail-box"><span>Sugestão automática</span><strong>${escapeHtml(submission.autoSuggestedStatus)}</strong></div>` : ""}
+      ${expRating}
     </div>
     ${renderTimePerQuestionChart(submission)}
     ${similarityRows ? `<div class="answer-review"><span>Subjetivas mais parecidas com outro candidato</span><ul class="flag-list">${similarityRows}</ul></div>` : ""}
@@ -821,6 +830,37 @@ async function resetTheme() {
   }
 }
 
+async function loadFunnel() {
+  const box = document.querySelector("#funnelChart");
+  if (!box) return;
+  try {
+    const res = await api("/api/admin/funnel");
+    if (!res.ok) return;
+    const d = await res.json();
+    const max = Math.max(d.started, d.submitted, d.decided, d.approved, 1);
+    const pct = (n) => `${Math.round((n / max) * 100)}%`;
+    const conv = (n, base) => base > 0 ? ` <span class="muted-hint">(${Math.round((n / base) * 100)}%)</span>` : "";
+    const rows = [
+      { label: "Começaram", value: d.started, base: null },
+      { label: "Enviaram", value: d.submitted, base: d.started },
+      { label: "Decididos", value: d.decided, base: d.submitted },
+      { label: "Aprovados", value: d.approved, base: d.submitted }
+    ];
+    const rating = d.avgRating != null
+      ? `<div class="funnel-row"><span>Nota da prova</span><div></div><strong>${d.avgRating}/10 <span class="muted-hint">(${d.ratingsCount} avaliações)</span></strong></div>`
+      : "";
+    box.innerHTML = rows.map((r) => `
+      <div class="funnel-row">
+        <span>${r.label}</span>
+        <div class="funnel-bar" style="width:${pct(r.value)}"></div>
+        <strong>${r.value}${r.base != null ? conv(r.value, r.base) : ""}</strong>
+      </div>
+    `).join("") + rating;
+  } catch {
+    /* silencioso */
+  }
+}
+
 function enterReviewMode() {
   reviewUnlocked = true;
   reviewLocked.classList.add("hidden");
@@ -828,10 +868,12 @@ function enterReviewMode() {
   refreshActiveNow();
   loadMetricsChart();
   loadQuestionStatsChart();
+  loadFunnel();
   if (!activePollTimer) {
     activePollTimer = setInterval(() => {
       refreshActiveNow();
       refreshSubmissionsQuietly();
+      loadFunnel();
       loadMetricsChart();
       loadQuestionStatsChart();
     }, 15000);
@@ -844,6 +886,22 @@ function enterReviewMode() {
 }
 
 async function handleSubmissionDetailClick(event) {
+  const star = event.target.closest("[data-shortlist]");
+  if (star) {
+    const id = star.dataset.shortlist;
+    const next = star.dataset.current !== "1";
+    try {
+      const res = await api(`/api/admin/submissions/${id}/shortlist`, { method: "PATCH", body: JSON.stringify({ shortlisted: next }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao favoritar.");
+      const target = loadedSubmissions.find((s) => s.id === id);
+      if (target) target.shortlisted = next;
+      renderReview();
+      toast(next ? "Adicionado aos favoritos." : "Removido dos favoritos.", "success");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+    return;
+  }
   const setStatus = event.target.closest("[data-set-status]");
   if (setStatus) {
     const id = setStatus.dataset.id;
@@ -1018,6 +1076,49 @@ function bindTheme() {
     const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
     applyTheme(next);
   });
+}
+
+// ---- Acessibilidade: tamanho do texto, alto contraste, leitura facilitada ----
+function applyA11y(prefs) {
+  const root = document.documentElement;
+  root.style.setProperty("--a11y-font-scale", String(prefs.fontScale || 1));
+  root.setAttribute("data-a11y-contrast", prefs.contrast ? "high" : "normal");
+  root.setAttribute("data-a11y-spacing", prefs.spacing ? "on" : "off");
+}
+
+function setupA11y() {
+  let prefs;
+  try { prefs = JSON.parse(localStorage.getItem("dge_a11y") || "{}"); } catch { prefs = {}; }
+  prefs = { fontScale: prefs.fontScale || 1, contrast: !!prefs.contrast, spacing: !!prefs.spacing };
+  const save = () => { localStorage.setItem("dge_a11y", JSON.stringify(prefs)); applyA11y(prefs); };
+  applyA11y(prefs);
+
+  const menu = document.querySelector("#a11yMenu");
+  const toggle = document.querySelector("#a11yToggle");
+  toggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = menu?.classList.toggle("hidden");
+    toggle.setAttribute("aria-expanded", String(!open));
+  });
+  document.addEventListener("click", (e) => {
+    if (menu && !menu.classList.contains("hidden") && !menu.contains(e.target) && e.target !== toggle) {
+      menu.classList.add("hidden");
+      toggle?.setAttribute("aria-expanded", "false");
+    }
+  });
+  document.querySelectorAll("[data-a11y-font]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const op = btn.dataset.a11yFont;
+      if (op === "inc") prefs.fontScale = Math.min(1.4, Math.round((prefs.fontScale + 0.1) * 10) / 10);
+      else if (op === "dec") prefs.fontScale = Math.max(0.9, Math.round((prefs.fontScale - 0.1) * 10) / 10);
+      else prefs.fontScale = 1;
+      save();
+    });
+  });
+  const contrast = document.querySelector("#a11yContrast");
+  const spacing = document.querySelector("#a11ySpacing");
+  if (contrast) { contrast.checked = prefs.contrast; contrast.addEventListener("change", () => { prefs.contrast = contrast.checked; save(); }); }
+  if (spacing) { spacing.checked = prefs.spacing; spacing.addEventListener("change", () => { prefs.spacing = spacing.checked; save(); }); }
 }
 
 function clearLoginQuery() {
@@ -1446,5 +1547,6 @@ function bindEvents() {
 }
 
 bindTheme();
+setupA11y();
 bindEvents();
 bootstrapFromCallback().then(checkSessionAndBoot);

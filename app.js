@@ -134,6 +134,7 @@ function applySessionUI() {
     }
     if (loggedDiscordLabel) loggedDiscordLabel.textContent = `@${currentSession.username}`;
     painelButton?.classList.toggle("hidden", !currentSession.isAdmin);
+    toggleWatermark(true);
   } else {
     loginGate?.classList.remove("hidden");
     candidateSections.forEach((el) => el.classList.add("hidden"));
@@ -141,6 +142,7 @@ function applySessionUI() {
     logoutButton?.classList.add("hidden");
     userBadge?.classList.add("hidden");
     painelButton?.classList.add("hidden");
+    toggleWatermark(false);
   }
 }
 
@@ -803,6 +805,7 @@ function showOnlyMyResults() {
   document.querySelectorAll(".candidate-only").forEach((el) => {
     if (el.id !== "confirmation") el.classList.add("hidden");
   });
+  toggleWatermark(false);
 }
 
 async function loadMyResults() {
@@ -824,6 +827,7 @@ async function loadMyResults() {
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
     renderResultFeedback(data);
+    renderExperienceRating(data.experienceRating);
     document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(data.objectiveAnswers, data.subjectiveAnswers);
     confirmation.classList.remove("hidden");
   } catch {
@@ -908,6 +912,7 @@ async function submitForm() {
     pill.textContent = status.text;
     pill.className = `pill ${status.className}`;
     document.querySelector("#myAnswersList").innerHTML = renderMyAnswersList(objectiveItems, subjectiveItems);
+    renderExperienceRating(null);
     confirmation.scrollIntoView({ behavior: "smooth", block: "center" });
     toast("Avaliação enviada.", "success", "Tudo certo");
   } catch (error) {
@@ -1055,10 +1060,103 @@ function registerServiceWorker() {
   });
 }
 
+// ---- Marca d'agua com o @username sobre a prova (anti-print/vazamento) ----
+function toggleWatermark(show) {
+  const wm = document.querySelector("#examWatermark");
+  if (!wm) return;
+  if (show && currentSession.authenticated) {
+    const label = `@${currentSession.username || "candidato"}`;
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><text x='50%' y='50%' fill='rgba(120,120,120,0.16)' font-size='18' font-family='Inter, sans-serif' transform='rotate(-24 160 90)' text-anchor='middle'>${label}</text></svg>`;
+    wm.style.backgroundImage = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}")`;
+    wm.classList.remove("hidden");
+  } else {
+    wm.classList.add("hidden");
+  }
+}
+
+// ---- Acessibilidade: tamanho do texto, alto contraste, leitura facilitada ----
+function applyA11y(prefs) {
+  const root = document.documentElement;
+  root.style.setProperty("--a11y-font-scale", String(prefs.fontScale || 1));
+  root.setAttribute("data-a11y-contrast", prefs.contrast ? "high" : "normal");
+  root.setAttribute("data-a11y-spacing", prefs.spacing ? "on" : "off");
+}
+
+function setupA11y() {
+  let prefs;
+  try { prefs = JSON.parse(localStorage.getItem("dge_a11y") || "{}"); } catch { prefs = {}; }
+  prefs = { fontScale: prefs.fontScale || 1, contrast: !!prefs.contrast, spacing: !!prefs.spacing };
+  const save = () => { localStorage.setItem("dge_a11y", JSON.stringify(prefs)); applyA11y(prefs); };
+  applyA11y(prefs);
+
+  const menu = document.querySelector("#a11yMenu");
+  const toggle = document.querySelector("#a11yToggle");
+  toggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = menu?.classList.toggle("hidden");
+    toggle.setAttribute("aria-expanded", String(!open));
+  });
+  document.addEventListener("click", (e) => {
+    if (menu && !menu.classList.contains("hidden") && !menu.contains(e.target) && e.target !== toggle) {
+      menu.classList.add("hidden");
+      toggle?.setAttribute("aria-expanded", "false");
+    }
+  });
+  document.querySelectorAll("[data-a11y-font]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const op = btn.dataset.a11yFont;
+      if (op === "inc") prefs.fontScale = Math.min(1.4, Math.round((prefs.fontScale + 0.1) * 10) / 10);
+      else if (op === "dec") prefs.fontScale = Math.max(0.9, Math.round((prefs.fontScale - 0.1) * 10) / 10);
+      else prefs.fontScale = 1;
+      save();
+    });
+  });
+  const contrast = document.querySelector("#a11yContrast");
+  const spacing = document.querySelector("#a11ySpacing");
+  if (contrast) { contrast.checked = prefs.contrast; contrast.addEventListener("change", () => { prefs.contrast = contrast.checked; save(); }); }
+  if (spacing) { spacing.checked = prefs.spacing; spacing.addEventListener("change", () => { prefs.spacing = spacing.checked; save(); }); }
+}
+
+// ---- Feedback pos-envio: candidato avalia a prova de 1 a 10 ----
+function renderExperienceRating(alreadyRated) {
+  const box = document.querySelector("#experienceRating");
+  const scale = document.querySelector("#experienceScale");
+  const thanks = document.querySelector("#experienceThanks");
+  if (!box || !scale) return;
+  box.classList.remove("hidden");
+  if (alreadyRated != null) {
+    scale.innerHTML = `<span class="experience-given">Você avaliou: <strong>${alreadyRated}/10</strong></span>`;
+    thanks?.classList.remove("hidden");
+    return;
+  }
+  scale.innerHTML = Array.from({ length: 10 }, (_, i) => `<button type="button" class="experience-dot" data-rating="${i + 1}">${i + 1}</button>`).join("");
+  scale.querySelectorAll(".experience-dot").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const rating = Number(btn.dataset.rating);
+      scale.querySelectorAll(".experience-dot").forEach((b) => { b.disabled = true; });
+      try {
+        const res = await fetch("/api/submission-feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ rating })
+        });
+        if (!res.ok) throw new Error("falhou");
+        scale.innerHTML = `<span class="experience-given">Você avaliou: <strong>${rating}/10</strong></span>`;
+        thanks?.classList.remove("hidden");
+      } catch {
+        scale.querySelectorAll(".experience-dot").forEach((b) => { b.disabled = false; });
+        toast("Não foi possível registrar sua avaliação.", "error");
+      }
+    });
+  });
+}
+
 function showMaintenancePanel() {
   document.querySelector("#maintenancePanel")?.classList.remove("hidden");
   document.querySelector("#loginGate")?.classList.add("hidden");
   document.querySelectorAll(".candidate-only").forEach((el) => el.classList.add("hidden"));
+  toggleWatermark(false);
 }
 
 function showPreExamPanel(startIso) {
@@ -1066,6 +1164,7 @@ function showPreExamPanel(startIso) {
   if (!panel) return;
   panel.classList.remove("hidden");
   document.querySelectorAll(".candidate-only").forEach((el) => el.classList.add("hidden"));
+  toggleWatermark(false);
   const sub = document.querySelector("#preExamSubtitle");
   const countdown = document.querySelector("#preExamCountdown");
   if (sub) sub.textContent = `Abertura em ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(startIso))}`;
@@ -1084,6 +1183,7 @@ function showPreExamPanel(startIso) {
 
 async function boot() {
   bindTheme();
+  setupA11y();
   bindSessionEvents();
   registerServiceWorker();
   handleLoginCallback();

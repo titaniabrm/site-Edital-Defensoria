@@ -26,6 +26,21 @@
       </div>
       <a class="ghost-button" href="/">Voltar ao edital</a>
       <button class="ghost-button" type="button" id="themeToggle">Tema escuro</button>
+      <div class="a11y-wrap">
+        <button class="ghost-button" type="button" id="a11yToggle" aria-haspopup="true" aria-expanded="false" title="Acessibilidade">♿</button>
+        <div class="a11y-menu hidden" id="a11yMenu" role="menu">
+          <div class="a11y-row">
+            <span>Tamanho do texto</span>
+            <div class="a11y-buttons">
+              <button type="button" data-a11y-font="dec" aria-label="Diminuir texto">A−</button>
+              <button type="button" data-a11y-font="reset" aria-label="Texto padrão">A</button>
+              <button type="button" data-a11y-font="inc" aria-label="Aumentar texto">A+</button>
+            </div>
+          </div>
+          <label class="a11y-check"><input type="checkbox" id="a11yContrast"> Alto contraste</label>
+          <label class="a11y-check"><input type="checkbox" id="a11ySpacing"> Leitura facilitada</label>
+        </div>
+      </div>
     </nav>
   </header>
 
@@ -54,6 +69,10 @@
             <button class="secondary-button" type="button" id="sendStatsButton">📊 Enviar estatísticas pro Discord</button>
           </div>
           <div class="summary-grid" id="summaryGrid"></div>
+          <div class="summary-card chart-card">
+            <span>Funil de conversão</span>
+            <div id="funnelChart" class="funnel-card"><div class="empty-state">Carregando...</div></div>
+          </div>
           <div class="summary-card chart-card timeline-card">
             <span>Envios por dia (todo o período)</span>
             <div id="timelineChart"><div class="empty-state">Carregando...</div></div>
@@ -196,6 +215,7 @@
                   <span>Filtro</span>
                   <select id="riskFilter">
                     <option value="all">Todos</option>
+                    <option value="shortlisted">⭐ Favoritos</option>
                     <option value="high">Maior risco de IA</option>
                     <option value="review">Em análise</option>
                     <option value="approved">Aprovados</option>
