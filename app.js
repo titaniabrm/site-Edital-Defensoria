@@ -435,10 +435,25 @@ function collectDraftObject() {
   return draft;
 }
 
+let lastSavedAt = 0;
+
+function refreshSavedAgo() {
+  if (!lastSavedAt || !draftStatus) return;
+  const sec = Math.max(0, Math.round((Date.now() - lastSavedAt) / 1000));
+  let label;
+  if (sec < 5) label = "✓ Salvo agora";
+  else if (sec < 60) label = `✓ Salvo ha ${sec}s`;
+  else if (sec < 3600) label = `✓ Salvo ha ${Math.floor(sec / 60)} min`;
+  else label = `✓ Salvo as ${new Date(lastSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  draftStatus.textContent = label;
+  draftStatus.classList.add("saved-indicator");
+}
+
 function saveDraft() {
   const draft = collectDraftObject();
   localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  draftStatus.textContent = `Salvo automaticamente as ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.`;
+  lastSavedAt = Date.now();
+  refreshSavedAgo();
   // Sincroniza com o servidor (best-effort, nao bloqueia).
   fetch("/api/draft", {
     method: "POST",
@@ -997,6 +1012,7 @@ async function boot() {
   updateProgress();
   tickClock();
   setInterval(tickClock, 1000);
+  setInterval(refreshSavedAgo, 5000);
 
   startDevtoolsWatch();
   // Heartbeat de presenca (candidato preenchendo agora).

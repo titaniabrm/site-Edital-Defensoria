@@ -197,7 +197,7 @@ function renderSubmissionList(submissions) {
         <label class="submission-check" title="Selecionar para acoes em lote">
           <input type="checkbox" data-bulk-select="${submission.id}" ${selected ? "checked" : ""}>
         </label>
-        <button class="submission-card ${submission.id === selectedSubmissionId ? "active" : ""}" type="button" data-submission-id="${submission.id}">
+        <button class="submission-card ${submission.id === selectedSubmissionId ? "active" : ""}" type="button" data-submission-id="${submission.id}" style="--card-progress:${percentage}%">
           <h3>${escapeHtml(submission.identity.discord || "Sem Discord")}</h3>
           <div class="submission-meta">
             <span class="pill">${percentage}% objetivas</span>
@@ -347,6 +347,7 @@ function renderSubmissionDetail(submission) {
     <div class="detail-actions">
       <span class="pill ${status.className}">${status.text}</span>
       <button class="secondary-button" type="button" data-download-pdf="${submission.id}">Baixar PDF</button>
+      <button class="ghost-button" type="button" data-copy-link="${submission.id}">📋 Copiar link</button>
     </div>
     <div class="status-actions">
       <button class="primary-button" type="button" data-set-status="Aprovado" data-id="${submission.id}">Aprovar</button>
@@ -374,6 +375,7 @@ function renderSubmissionDetail(submission) {
       <div class="detail-box"><span>Maior inatividade</span><strong>${Math.round((submission.maxIdleMs || 0) / 1000)}s</strong></div>
       ${submission.autoSuggestedStatus ? `<div class="detail-box"><span>Sugestao automatica</span><strong>${escapeHtml(submission.autoSuggestedStatus)}</strong></div>` : ""}
     </div>
+    ${renderTimePerQuestionChart(submission)}
     ${similarityRows ? `<div class="answer-review"><span>Subjetivas mais parecidas com outro candidato</span><ul class="flag-list">${similarityRows}</ul></div>` : ""}
     ${history ? `<div class="answer-review"><span>Historico de status</span><ul class="history-list">${history}</ul></div>` : ""}
     <label class="admin-note">
@@ -473,6 +475,14 @@ async function loadAdminSubmissions() {
   }
   loadedSubmissions = await response.json();
   noteSubmissionCount(loadedSubmissions.length);
+
+  // Suporte a link direto: /admin#submission/<id> pula direto pra ficha
+  // do candidato e abre a aba "Candidatos".
+  const hashMatch = window.location.hash.match(/^#submission\/([\w-]+)$/);
+  if (hashMatch && loadedSubmissions.some((s) => s.id === hashMatch[1])) {
+    selectedSubmissionId = hashMatch[1];
+    switchAdminTab("candidates");
+  }
   renderReview();
 }
 
@@ -545,6 +555,73 @@ async function loadMetricsChart() {
   }
 }
 
+// Comparativo entre questoes objetivas (% acertos por questao).
+function renderQuestionStatsChart(questions) {
+  const el = document.querySelector("#questionStatsChart");
+  if (!el) return;
+  if (!questions?.length) {
+    el.innerHTML = `<div class="empty-state">Sem dados ainda.</div>`;
+    return;
+  }
+  const width = Math.max(220, questions.length * 30);
+  const bars = questions.map((q, i) => {
+    const height = Math.round((q.percent / 100) * 70);
+    const color = q.percent >= 70 ? "#287355" : q.percent >= 40 ? "#b97518" : "#b73d35";
+    return `
+      <g transform="translate(${i * 30 + 10}, 0)">
+        <rect x="0" y="${90 - height}" width="22" height="${height}" rx="3" fill="${color}">
+          <title>Questao ${q.id}: ${q.percent}% acertaram (${q.correct}/${q.total})</title>
+        </rect>
+        <text x="11" y="${Math.max(12, 84 - height)}" text-anchor="middle" class="bar-value">${q.percent}%</text>
+        <text x="11" y="106" text-anchor="middle" class="bar-label">${q.id}</text>
+      </g>
+    `;
+  }).join("");
+  el.innerHTML = `<svg class="bar-chart timeline-chart" viewBox="0 0 ${width} 116" role="img">${bars}</svg>`;
+}
+
+async function loadQuestionStatsChart() {
+  try {
+    const res = await api("/api/admin/question-stats");
+    if (!res.ok) return;
+    const data = await res.json();
+    renderQuestionStatsChart(data.questions);
+  } catch {
+    // mantem o estado anterior
+  }
+}
+
+// Mini grafico de tempo gasto por questao (objetivas + subjetivas), usado
+// no detalhe do candidato. Picos longos podem indicar consulta externa.
+function renderTimePerQuestionChart(submission) {
+  const objs = submission.objectiveAnswers || [];
+  const subs = submission.subjectiveAnswers || [];
+  const items = [
+    ...objs.map((a) => ({ label: String(a.id), sec: Math.round((a.timeSpentMs || 0) / 1000), kind: "obj" })),
+    ...subs.map((a) => ({ label: String(a.id), sec: Math.round((a.timeSpentMs || 0) / 1000), kind: "subj" }))
+  ];
+  if (!items.length) return "";
+  const max = Math.max(1, ...items.map((i) => i.sec));
+  const width = Math.max(220, items.length * 18);
+  const bars = items.map((it, i) => {
+    const h = Math.round((it.sec / max) * 60);
+    const fill = it.kind === "obj" ? "var(--gold)" : "var(--gold-2)";
+    return `
+      <g transform="translate(${i * 18 + 6}, 0)">
+        <rect x="0" y="${70 - h}" width="12" height="${h}" rx="2" fill="${fill}">
+          <title>Q${it.label}: ${it.sec}s</title>
+        </rect>
+      </g>
+    `;
+  }).join("");
+  return `
+    <div class="answer-review time-chart-box">
+      <span>Tempo gasto por questao (segundos)</span>
+      <svg class="bar-chart" viewBox="0 0 ${width} 80" role="img">${bars}</svg>
+    </div>
+  `;
+}
+
 // ---- Acoes em lote: aprovar/reprovar varios candidatos de uma vez. ----
 async function bulkUpdateStatus(status) {
   if (!bulkSelection.size) return;
@@ -598,6 +675,26 @@ async function sendStats() {
   }
 }
 
+// Aplica os valores do formulario de tema diretamente como CSS vars,
+// sem persistir, pro admin ver o resultado antes de salvar.
+function previewTheme() {
+  const form = document.querySelector("#themeForm");
+  if (!form) return;
+  const root = document.documentElement;
+  const setVar = (name, value) => {
+    if (value && value.trim()) root.style.setProperty(name, value.trim());
+  };
+  setVar("--navy", form.elements.primaryColor.value);
+  setVar("--gold", form.elements.accentColor.value);
+  setVar("--paper", form.elements.backgroundColor.value);
+  // Logo no painel admin: troca se URL valida.
+  const logo = form.elements.logoUrl.value.trim();
+  if (logo) {
+    document.querySelectorAll(".brand img").forEach((img) => { img.src = logo; });
+  }
+  toast("Visualizacao aplicada (nao salvo). Clique em Salvar tema pra persistir.", "info", "Preview");
+}
+
 async function saveTheme(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -640,11 +737,13 @@ function enterReviewMode() {
   reviewDashboard.classList.remove("hidden");
   refreshActiveNow();
   loadMetricsChart();
+  loadQuestionStatsChart();
   if (!activePollTimer) {
     activePollTimer = setInterval(() => {
       refreshActiveNow();
       refreshSubmissionsQuietly();
       loadMetricsChart();
+      loadQuestionStatsChart();
     }, 15000);
   }
   if (!sessionRefreshTimer) {
@@ -757,6 +856,17 @@ async function handleSubmissionDetailClick(event) {
       toast("Nota salva.", "success");
     } catch (error) {
       toast(error.message, "error");
+    }
+    return;
+  }
+  const copyBtn = event.target.closest("[data-copy-link]");
+  if (copyBtn) {
+    const url = `${window.location.origin}/admin#submission/${copyBtn.dataset.copyLink}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copiado para a area de transferencia.", "success");
+    } catch {
+      prompt("Copie o link manualmente:", url);
     }
     return;
   }
@@ -1049,6 +1159,7 @@ function bindEvents() {
   document.querySelector("#sendStatsButton")?.addEventListener("click", sendStats);
   document.querySelector("#themeForm")?.addEventListener("submit", saveTheme);
   document.querySelector("#resetThemeButton")?.addEventListener("click", resetTheme);
+  document.querySelector("#previewThemeButton")?.addEventListener("click", previewTheme);
   submissionDetail?.addEventListener("click", handleSubmissionDetailClick);
   document.querySelector("#closeCompare")?.addEventListener("click", () => {
     document.querySelector("#compareModal")?.classList.add("hidden");

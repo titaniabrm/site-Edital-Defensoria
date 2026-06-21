@@ -17,17 +17,20 @@
   --shadow: 0 18px 48px rgba(26, 29, 31, 0.14);
 }
 
+/* Dark mode "carvao + dourado militar": preto rico em vez de azul escuro */
 [data-theme="dark"] {
-  --ink: #e8eef5;
-  --muted: #92a2b3;
-  --paper: #0b1722;
-  --surface: #122231;
-  --line: #1f3447;
-  --navy: #0a1a29;
-  --navy-2: #14304a;
-  --card-bg: #15293c;
-  --input-bg: #0f2030;
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  --ink: #f0ece0;
+  --muted: #9c9b95;
+  --paper: #0d0d10;
+  --surface: #18181d;
+  --line: #2a2a30;
+  --navy: #0a0a0d;
+  --navy-2: #1c1c22;
+  --gold: #e8c172;
+  --gold-2: #c79a4d;
+  --card-bg: #1c1c22;
+  --input-bg: #15151a;
+  --shadow: 0 22px 56px rgba(0, 0, 0, 0.6);
 }
 
 [data-theme="dark"] .rules-grid article,
@@ -97,7 +100,9 @@ body {
   background:
     linear-gradient(180deg, rgba(7, 26, 43, 0.05), transparent 360px),
     var(--paper);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
 }
 
@@ -1692,4 +1697,177 @@ footer {
   font-size: 0.85rem;
   color: var(--muted);
   margin: 4px 0 12px;
+}
+
+/* =============================================
+   ✨ Polimento visual: animacoes, hover, vidro,
+   skeleton, micro-interacoes (v2 do estilo)
+   ============================================= */
+
+/* Cabecalho com vidro mais forte + gradiente sutil */
+.topbar {
+  background: linear-gradient(135deg, rgba(7, 26, 43, 0.96), rgba(16, 44, 59, 0.96));
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+[data-theme="dark"] .topbar {
+  background: linear-gradient(135deg, rgba(13, 13, 16, 0.96), rgba(28, 28, 34, 0.96));
+}
+
+/* Animacao de entrada das secoes principais */
+@keyframes dge-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hero,
+.rules-section,
+.form-section,
+.review-shell,
+.confirmation,
+.summary-card,
+.submission-card-wrap,
+.admin-tab-panel {
+  animation: dge-fade-in 320ms ease-out both;
+}
+.summary-card { animation-delay: 60ms; }
+.summary-grid > :nth-child(2) { animation-delay: 100ms; }
+.summary-grid > :nth-child(3) { animation-delay: 140ms; }
+.summary-grid > :nth-child(4) { animation-delay: 180ms; }
+
+/* Hover suave nos botoes principais */
+.primary-button,
+.secondary-button,
+.ghost-button,
+.danger-button {
+  transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.primary-button:hover,
+.secondary-button:hover,
+.danger-button:hover {
+  transform: translateY(-1px) scale(1.015);
+  box-shadow: 0 8px 22px rgba(7, 26, 43, 0.2);
+}
+.primary-button:active,
+.secondary-button:active,
+.danger-button:active,
+.ghost-button:active {
+  transform: scale(0.985);
+}
+[data-theme="dark"] .primary-button:hover,
+[data-theme="dark"] .secondary-button:hover {
+  box-shadow: 0 8px 22px rgba(232, 193, 114, 0.25);
+}
+
+/* Cards com hover bonito */
+.question-card,
+.submission-card,
+.summary-card,
+.rules-grid article,
+.detail-box,
+.answer-review {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.question-card:hover,
+.submission-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(7, 26, 43, 0.12);
+  border-color: var(--gold);
+}
+
+/* Barra de progresso embutida no card de candidato */
+.submission-card { position: relative; overflow: hidden; }
+.submission-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: var(--card-progress, 0%);
+  background: linear-gradient(90deg, var(--gold-2), var(--gold));
+  transition: width 400ms ease;
+}
+
+/* Skeleton loading: gradiente animado */
+@keyframes dge-skeleton {
+  0% { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.06) 0px, rgba(0, 0, 0, 0.12) 80px, rgba(0, 0, 0, 0.06) 160px);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  animation: dge-skeleton 1.4s linear infinite;
+  border-radius: 6px;
+  display: inline-block;
+}
+[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 0px, rgba(255, 255, 255, 0.1) 80px, rgba(255, 255, 255, 0.04) 160px);
+  background-size: 200px 100%;
+}
+.skeleton-line {
+  height: 14px;
+  width: 100%;
+  display: block;
+  margin: 8px 0;
+}
+.skeleton-card {
+  height: 80px;
+  width: 100%;
+  display: block;
+}
+
+/* Pills com mais peso visual */
+.pill {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: transform 120ms ease;
+}
+.pill:hover { transform: translateY(-1px); }
+
+/* Brand img com glow sutil no hover */
+.brand img {
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+.brand:hover img {
+  transform: rotate(-3deg) scale(1.05);
+  box-shadow: 0 0 16px rgba(215, 173, 93, 0.5);
+}
+
+/* Inputs com focus glow dourado */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(215, 173, 93, 0.18);
+}
+
+/* Indicador "Salvo ha X" mais visivel */
+.saved-indicator {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(40, 115, 85, 0.12);
+  padding: 4px 10px;
+  border-radius: 999px;
+  animation: dge-pulse-soft 2s ease-in-out infinite;
+}
+[data-theme="dark"] .saved-indicator {
+  color: #6cdba0;
+  background: rgba(108, 219, 160, 0.15);
+}
+@keyframes dge-pulse-soft {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+
+/* Mini grafico de tempo por questao no detalhe */
+.time-chart-box {
+  background: rgba(215, 173, 93, 0.06);
+}
+.time-chart-box svg {
+  width: 100%;
+  height: 80px;
+  margin-top: 8px;
 }

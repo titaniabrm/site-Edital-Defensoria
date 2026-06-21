@@ -449,11 +449,11 @@ app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", [
     "default-src 'self'",
     "script-src 'self' https://hcaptcha.com https://*.hcaptcha.com",
-    "style-src 'self' 'unsafe-inline' https://hcaptcha.com https://*.hcaptcha.com",
+    "style-src 'self' 'unsafe-inline' https://hcaptcha.com https://*.hcaptcha.com https://fonts.googleapis.com",
     "img-src 'self' data: https:",
     "connect-src 'self' https://hcaptcha.com https://*.hcaptcha.com",
     "frame-src https://hcaptcha.com https://*.hcaptcha.com",
-    "font-src 'self'",
+    "font-src 'self' https://fonts.gstatic.com",
     "base-uri 'self'",
     "form-action 'self' https://discord.com",
     "frame-ancestors 'none'",
@@ -1646,6 +1646,29 @@ app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message || "Erro ao gerar metricas." });
+  }
+});
+
+// Comparativo entre questoes objetivas: quantos acertaram cada uma.
+// Util pra banca calibrar dificuldade do proximo edital.
+app.get("/api/admin/question-stats", requireAdmin, async (req, res) => {
+  try {
+    const submissions = await listSubmissions();
+    const stats = new Map();
+    submissions.forEach((sub) => {
+      (sub.objectiveAnswers || []).forEach((a) => {
+        const entry = stats.get(a.id) || { id: a.id, question: a.question, correct: 0, total: 0 };
+        entry.total += 1;
+        if (a.isCorrect) entry.correct += 1;
+        stats.set(a.id, entry);
+      });
+    });
+    const list = [...stats.values()]
+      .map((s) => ({ ...s, percent: s.total ? Math.round((s.correct / s.total) * 100) : 0 }))
+      .sort((a, b) => a.id - b.id);
+    res.json({ questions: list, totalSubmissions: submissions.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao gerar estatisticas por questao." });
   }
 });
 

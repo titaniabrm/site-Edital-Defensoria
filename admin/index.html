@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Painel | Defensoria-Geral do Exercito</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="/styles.css">
   <meta name="theme-color" content="#071a2b">
 </head>
@@ -55,6 +58,10 @@
           <div class="summary-card chart-card timeline-card">
             <span>Envios por dia (todo o periodo)</span>
             <div id="timelineChart"><div class="empty-state">Carregando...</div></div>
+          </div>
+          <div class="summary-card chart-card timeline-card">
+            <span>Comparativo entre questoes objetivas (% acertos)</span>
+            <div id="questionStatsChart"><div class="empty-state">Carregando...</div></div>
           </div>
         </div>
 
@@ -127,6 +134,7 @@
                 <input type="url" name="logoUrl" placeholder="https://...">
               </label>
               <div class="config-actions">
+                <button type="button" id="previewThemeButton" class="ghost-button">👁 Visualizar agora</button>
                 <button type="submit" class="primary-button">Salvar tema</button>
                 <button type="button" id="resetThemeButton" class="secondary-button">Resetar tema</button>
               </div>
