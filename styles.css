@@ -2333,3 +2333,36 @@ mark.ai-suspect-soft {
   min-width: 2px;
 }
 .funnel-row strong { font-variant-numeric: tabular-nums; }
+
+/* Dica de atalhos de teclado na correcao */
+.shortcut-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 4px 0 10px;
+}
+.shortcut-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: ui-monospace, monospace;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+/* Editor de perguntas travado (edital aberto) */
+.questions-editor.editor-locked {
+  opacity: 0.6;
+  position: relative;
+}
+.questions-editor.editor-locked::after {
+  content: "🔒 Edital aberto";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--danger);
+}

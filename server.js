@@ -12,8 +12,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
-const ADMIN_PIN = process.env.ADMIN_PIN || "DGE-2026";
-const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || ADMIN_PIN;
+// Login admin e 100% via Discord (allowlist). O PIN foi removido. Mantemos
+// ADMIN_SESSION_SECRET so para ASSINAR os cookies de sessao; aceitamos o
+// antigo ADMIN_PIN como fonte legada do segredo para nao invalidar sessoes
+// de quem ja estava logado.
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_PIN || "dge-troque-este-segredo";
 const MIN_PERFORMANCE_PERCENT = Number(process.env.MIN_PERFORMANCE_PERCENT || 70);
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 const EXAM_START_AT = process.env.EXAM_START_AT || "2026-06-19T15:00:00Z"; // 19/06/2026 12:00 BRT
@@ -51,13 +54,9 @@ const AUDIT_FILE = path.join(DATA_DIR, "audit.json");
 const DRAFTS_FILE = path.join(DATA_DIR, "drafts.json");
 const IP_HASH_SALT = process.env.IP_HASH_SALT || ADMIN_SESSION_SECRET;
 
-if (ADMIN_PIN === "DGE-2026") {
+if (!process.env.ADMIN_SESSION_SECRET && !process.env.ADMIN_PIN) {
   // eslint-disable-next-line no-console
-  console.warn("[ATENCAO] ADMIN_PIN nao definido no .env - usando default fraco. Troque antes do deploy.");
-}
-if (ADMIN_PIN.length < 8) {
-  // eslint-disable-next-line no-console
-  console.warn("[ATENCAO] ADMIN_PIN com menos de 8 caracteres. Use uma senha forte.");
+  console.warn("[ATENCAO] ADMIN_SESSION_SECRET nao definido - usando segredo fraco. Defina-o antes do deploy.");
 }
 
 const logger = pino({
@@ -597,7 +596,7 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-admin-pin");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
     res.setHeader("Vary", "Origin");
   }
   if (req.method === "OPTIONS") {
@@ -1476,6 +1475,19 @@ async function countDrafts() {
   }
 }
 
+// Exclui UM envio (libera o Roblox/Discord do indice unico para reinscricao).
+async function deleteSubmission(id) {
+  if (supabase) {
+    const { error } = await supabase.from("defensoria_submissions").delete().eq("id", id);
+    if (error) throw normalizeDatabaseError(error);
+    return;
+  }
+  const submissions = await readLocalSubmissions();
+  const next = submissions.filter((s) => s.id !== id);
+  if (next.length === submissions.length) throw new Error("Candidato não encontrado.");
+  await writeLocalSubmissions(next);
+}
+
 async function listSubmissions() {
   if (supabase) {
     const { data, error } = await supabase
@@ -1563,17 +1575,9 @@ async function requireAdmin(req, res, next) {
   // serverless, onde a instancia pode ter uma copia antiga em memoria.
   await ensureConfig().catch(() => {});
   const session = readSession(req);
-  const hasPassword = req.header("x-admin-pin") === ADMIN_PIN;
 
   if (isSessionAdmin(session)) {
     req.session = session;
-    next();
-    return;
-  }
-
-  if (hasPassword) {
-    req.session = { username: "admin-pin", discordId: null, isAdmin: true };
-    setAdminCookie(res);
     next();
     return;
   }
@@ -1811,6 +1815,11 @@ app.patch("/api/admin/config", requireAdmin, async (req, res) => {
       next.maintenanceMode = Boolean(body.maintenance);
     }
     if (body.questions && typeof body.questions === "object") {
+      // Trocar a prova com o edital aberto quebraria quem esta respondendo
+      // (os ids/seed mudam). So permite editar com o edital fechado.
+      if (withinExamWindow()) {
+        throw new Error("Feche o edital antes de editar as perguntas - trocar a prova com candidatos respondendo invalida os envios em andamento.");
+      }
       // "reset" => volta pras perguntas-padrao do codigo.
       if (body.questions.reset === true) {
         delete next.questions;
@@ -1951,28 +1960,6 @@ app.get("/api/health", async (req, res) => {
     examOpen: withinExamWindow()
   });
 });
-
-const loginRate = new Map();
-const LOGIN_RATE_WINDOW_MS = 60 * 1000;
-const LOGIN_RATE_MAX = 5;
-
-function rateLimitLogin(req, res, next) {
-  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown")
-    .toString().split(",")[0].trim();
-  const now = Date.now();
-  const entry = loginRate.get(ip) || { count: 0, reset: now + LOGIN_RATE_WINDOW_MS };
-  if (now > entry.reset) {
-    entry.count = 0;
-    entry.reset = now + LOGIN_RATE_WINDOW_MS;
-  }
-  entry.count += 1;
-  loginRate.set(ip, entry);
-  if (entry.count > LOGIN_RATE_MAX) {
-    res.status(429).json({ error: "Muitas tentativas de login. Aguarde um minuto." });
-    return;
-  }
-  next();
-}
 
 // O state do OAuth e auto-verificavel (assinado com HMAC) em vez de guardado
 // em memoria: na Vercel cada requisicao pode cair numa instancia serverless
@@ -2154,21 +2141,6 @@ app.get("/api/session", async (req, res) => {
     // isAdmin reavaliado ao vivo: admin recem-adicionado ja entra no painel.
     isAdmin: isSessionAdmin(session)
   });
-});
-
-app.post("/api/admin/login", rateLimitLogin, (req, res) => {
-  const provided = String(req.body?.password || "");
-  const a = Buffer.from(provided);
-  const b = Buffer.from(ADMIN_PIN);
-  const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
-  if (!ok) {
-    res.status(401).json({ error: "Senha administrativa inválida." });
-    return;
-  }
-  setAdminCookie(res);
-  const token = createAdminSession();
-  recordAudit("login.pin", "admin", null, null, req);
-  res.json({ ok: true, token });
 });
 
 app.post("/api/admin/logout", (req, res) => {
@@ -2697,6 +2669,16 @@ app.get("/api/cron/backup", async (req, res) => {
   } catch (error) {
     logger.error({ err: error.message }, "backup.failed");
     res.status(500).json({ error: "Falha no backup." });
+  }
+});
+
+app.delete("/api/admin/submissions/:id", requireAdmin, async (req, res) => {
+  try {
+    await deleteSubmission(req.params.id);
+    recordAudit("submission.delete", "admin", req.params.id, null, req);
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Erro ao excluir envio." });
   }
 });
 

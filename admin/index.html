@@ -225,6 +225,7 @@
                 <label>
                   <span>Ordenar</span>
                   <select id="sortBy">
+                    <option value="pending">Pendentes primeiro</option>
                     <option value="date">Mais recentes</option>
                     <option value="score">Maior % objetivas</option>
                     <option value="risk">Maior risco IA</option>
@@ -239,6 +240,7 @@
                 <button class="secondary-button" type="button" data-bulk="Em analise">Voltar para análise</button>
                 <button class="ghost-button" type="button" id="bulkClear">Limpar seleção</button>
               </div>
+              <p class="shortcut-hint">⌨ Atalhos: <kbd>A</kbd> aprovar · <kbd>R</kbd> reprovar · <kbd>E</kbd> em análise · <kbd>J</kbd>/<kbd>K</kbd> navegar · <kbd>F</kbd> favoritar</p>
               <div id="submissionList"></div>
             </div>
             <article class="submission-detail" id="submissionDetail">

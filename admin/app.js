@@ -332,6 +332,13 @@ function getFilteredSubmissions() {
     submissions.sort((a, b) => b.aiRiskAverage - a.aiRiskAverage);
   } else if (sort === "grade") {
     submissions.sort((a, b) => (b.manualGrade ?? -1) - (a.manualGrade ?? -1));
+  } else if (sort === "pending") {
+    // "Em analise" primeiro (fila de correcao), depois mais recentes.
+    submissions.sort((a, b) => {
+      const pa = a.status === "Em analise" ? 0 : 1;
+      const pb = b.status === "Em analise" ? 0 : 1;
+      return pa - pb || new Date(b.submittedAt) - new Date(a.submittedAt);
+    });
   } else {
     submissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
   }
@@ -429,6 +436,7 @@ function renderSubmissionDetail(submission) {
       <span class="pill ${status.className}">${status.text}</span>
       <button class="secondary-button" type="button" data-download-pdf="${submission.id}">Baixar PDF</button>
       <button class="ghost-button" type="button" data-copy-link="${submission.id}">📋 Copiar link</button>
+      <button class="danger-button" type="button" data-delete-submission="${submission.id}" data-name="${escapeHtml(submission.identity.discord || submission.id)}">🗑 Excluir</button>
     </div>
     <div class="status-actions">
       <button class="primary-button" type="button" data-set-status="Aprovado" data-id="${submission.id}">Aprovar</button>
@@ -886,6 +894,29 @@ function enterReviewMode() {
 }
 
 async function handleSubmissionDetailClick(event) {
+  const del = event.target.closest("[data-delete-submission]");
+  if (del) {
+    const id = del.dataset.deleteSubmission;
+    const name = del.dataset.name || id;
+    const ok = await customConfirm(`Excluir o envio de @${name}? Isso libera o Discord/Roblox para uma nova inscrição. Não dá pra desfazer.`, {
+      eyebrow: "Excluir envio",
+      title: "Confirmar exclusão",
+      confirmLabel: "Excluir",
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      const res = await api(`/api/admin/submissions/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Falha ao excluir.");
+      loadedSubmissions = loadedSubmissions.filter((s) => s.id !== id);
+      if (selectedSubmissionId === id) selectedSubmissionId = null;
+      renderReview();
+      toast("Envio excluído.", "success");
+    } catch (error) {
+      toast(error.message, "error");
+    }
+    return;
+  }
   const star = event.target.closest("[data-shortlist]");
   if (star) {
     const id = star.dataset.shortlist;
@@ -1228,6 +1259,7 @@ async function loadConfig() {
         subjective: (cfg.questions.subjective || []).map((q) => ({ text: q.text, modelAnswer: q.modelAnswer || "" }))
       };
       usingDefaultQuestions = Boolean(cfg.usingDefaultQuestions);
+      examOpenForEditor = Boolean(cfg.isOpen);
       renderQuestionsEditor();
     }
   } catch (error) {
@@ -1238,6 +1270,7 @@ async function loadConfig() {
 // ---- Editor de perguntas (banco de questoes editavel pelo painel) ----
 let questionsState = { objective: [], subjective: [] };
 let usingDefaultQuestions = true;
+let examOpenForEditor = false;
 
 function renderQuestionsEditor() {
   const objWrap = document.querySelector("#objectiveEditor");
@@ -1275,8 +1308,21 @@ function renderQuestionsEditor() {
   const subCount = document.querySelector("#subjectiveCount");
   if (objCount) objCount.textContent = questionsState.objective.length;
   if (subCount) subCount.textContent = questionsState.subjective.length;
+
+  // Trava a edicao enquanto o edital estiver aberto (mudar a prova com gente
+  // respondendo invalida os envios em andamento).
+  const editor = document.querySelector(".questions-editor");
+  if (editor) {
+    editor.querySelectorAll("textarea, input, #addObjectiveButton, #addSubjectiveButton, #saveQuestionsButton, #resetQuestionsButton, [data-remove-question]")
+      .forEach((el) => { el.disabled = examOpenForEditor; });
+    editor.classList.toggle("editor-locked", examOpenForEditor);
+  }
   const qStatus = document.querySelector("#questionsStatus");
-  if (qStatus) qStatus.textContent = usingDefaultQuestions ? "Usando as perguntas padrão do sistema." : "Usando perguntas personalizadas.";
+  if (qStatus) {
+    qStatus.textContent = examOpenForEditor
+      ? "🔒 Edital ABERTO: feche o edital para editar as perguntas (evita invalidar quem está respondendo)."
+      : (usingDefaultQuestions ? "Usando as perguntas padrão do sistema." : "Usando perguntas personalizadas.");
+  }
 }
 
 // Le os valores digitados no DOM de volta pro estado (antes de add/remover/salvar
@@ -1451,7 +1497,69 @@ async function loadAuditLog() {
   }
 }
 
+// ---- Correcao rapida: atalhos de teclado na aba Candidatos ----
+async function applyStatusToSubmission(id, status, note = "") {
+  const response = await api(`/api/admin/submissions/${id}/status`, { method: "PATCH", body: JSON.stringify({ status, note }) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Falha ao atualizar status.");
+  const target = loadedSubmissions.find((item) => item.id === id);
+  if (target) {
+    target.status = status;
+    target.statusHistory = [...(target.statusHistory || []), data.entry];
+  }
+  return data;
+}
+
+async function quickSetStatus(status) {
+  if (!selectedSubmissionId) return;
+  try {
+    await applyStatusToSubmission(selectedSubmissionId, status);
+    renderReview();
+    toast(`Status: ${status}`, "success");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function selectAdjacent(delta) {
+  const list = getFilteredSubmissions();
+  if (!list.length) return;
+  const idx = list.findIndex((s) => s.id === selectedSubmissionId);
+  const nextIdx = idx === -1 ? 0 : Math.max(0, Math.min(list.length - 1, idx + delta));
+  selectedSubmissionId = list[nextIdx].id;
+  renderReview();
+  document.querySelector(`.submission-card[data-submission-id="${selectedSubmissionId}"]`)?.scrollIntoView({ block: "nearest" });
+}
+
+async function quickToggleShortlist() {
+  if (!selectedSubmissionId) return;
+  const target = loadedSubmissions.find((s) => s.id === selectedSubmissionId);
+  if (!target) return;
+  const next = !target.shortlisted;
+  try {
+    const res = await api(`/api/admin/submissions/${selectedSubmissionId}/shortlist`, { method: "PATCH", body: JSON.stringify({ shortlisted: next }) });
+    if (!res.ok) throw new Error("falha");
+    target.shortlisted = next;
+    renderReview();
+  } catch { toast("Falha ao favoritar.", "error"); }
+}
+
+function handleGradingShortcuts(event) {
+  if (!reviewUnlocked) return;
+  const tab = document.querySelector("#tab-candidates");
+  if (!tab || tab.classList.contains("hidden")) return;
+  const tag = (event.target.tagName || "").toLowerCase();
+  if (["input", "textarea", "select"].includes(tag) || event.target.isContentEditable) return;
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (document.querySelector(".modal:not(.hidden)")) return;
+  const key = event.key.toLowerCase();
+  const statusMap = { a: "Aprovado", r: "Reprovado", e: "Em analise" };
+  if (statusMap[key]) { event.preventDefault(); quickSetStatus(statusMap[key]); }
+  else if (key === "j" || event.key === "ArrowDown") { event.preventDefault(); selectAdjacent(1); }
+  else if (key === "k" || event.key === "ArrowUp") { event.preventDefault(); selectAdjacent(-1); }
+  else if (key === "f") { event.preventDefault(); quickToggleShortlist(); }
+}
+
 function bindEvents() {
+  document.addEventListener("keydown", handleGradingShortcuts);
   document.querySelectorAll(".admin-tab").forEach((btn) => {
     btn.addEventListener("click", () => switchAdminTab(btn.dataset.tab));
   });
